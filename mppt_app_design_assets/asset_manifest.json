@@ -1,0 +1,79 @@
+[
+  {
+    "file": "mppt_app_design_assets/01_ui_pages/01_device_home_page.png",
+    "description": "设备首页 UI 设计稿",
+    "type": "UI page",
+    "format": "PNG",
+    "width": 853,
+    "height": 1844,
+    "mode": "RGB",
+    "has_transparency": false,
+    "source_filename": "a_clean_mobile_app_ui_screenshot_mockup_in_portr.png"
+  },
+  {
+    "file": "mppt_app_design_assets/01_ui_pages/02_device_detail_control_page.png",
+    "description": "设备详情 / 控制面板 UI 设计稿",
+    "type": "UI page",
+    "format": "PNG",
+    "width": 853,
+    "height": 1844,
+    "mode": "RGB",
+    "has_transparency": false,
+    "source_filename": "a_clean_mobile_app_ui_screenshot_smartphone_statu.png"
+  },
+  {
+    "file": "mppt_app_design_assets/01_ui_pages/03_scene_page.png",
+    "description": "场景页 UI 设计稿",
+    "type": "UI page",
+    "format": "PNG",
+    "width": 853,
+    "height": 1844,
+    "mode": "RGB",
+    "has_transparency": false,
+    "source_filename": "a_clean_mobile_app_ui_screenshot_iphone_like_sta.png"
+  },
+  {
+    "file": "mppt_app_design_assets/01_ui_pages/04_profile_settings_page.png",
+    "description": "我的 / 设置页 UI 设计稿",
+    "type": "UI page",
+    "format": "PNG",
+    "width": 853,
+    "height": 1844,
+    "mode": "RGB",
+    "has_transparency": false,
+    "source_filename": "a_clean_mobile_app_profile_settings_screen_ui_sc.png"
+  },
+  {
+    "file": "mppt_app_design_assets/02_device_assets/mppt_gray_black_controller_transparent.png",
+    "description": "灰黑色 MPPT 控制器透明背景素材",
+    "type": "device asset",
+    "format": "PNG",
+    "width": 587,
+    "height": 904,
+    "mode": "RGBA",
+    "has_transparency": true,
+    "source_filename": "mppt_gray_black_controller_transparent_cropped.png"
+  },
+  {
+    "file": "mppt_app_design_assets/03_original_references/original_device_home_dark_reference.png",
+    "description": "用户提供的原始设备首页参考图",
+    "type": "original reference",
+    "format": "PNG",
+    "width": 679,
+    "height": 1005,
+    "mode": "RGB",
+    "has_transparency": false,
+    "source_filename": "d4fa2f46-f3c2-4314-ba83-9c9f679b1d9f.png"
+  },
+  {
+    "file": "mppt_app_design_assets/03_original_references/original_device_detail_dark_reference.png",
+    "description": "用户提供的原始设备详情页参考图",
+    "type": "original reference",
+    "format": "PNG",
+    "width": 652,
+    "height": 1347,
+    "mode": "RGB",
+    "has_transparency": false,
+    "source_filename": "dd539207-aa3c-4751-af22-7a81f41a9b1a.png"
+  }
+]

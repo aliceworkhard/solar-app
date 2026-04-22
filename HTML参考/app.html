@@ -1,0 +1,2947 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MPPT 太阳能系统</title>
+    <!-- 加载 Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 引入 Inter 字体 -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        /* 自定义样式 */
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+            /* 页面背景：从上到下微妙的灰白渐变 */
+            background: linear-gradient(to bottom, #f9fafb, #ffffff);
+        }
+
+        /* 核心状态图的光晕效果 */
+        .energy-flow-bg {
+            background: radial-gradient(circle at 50% 30%, rgba(229, 231, 235, 0.5), transparent 70%);
+        }
+
+        /* 自定义滑块轨道 */
+        .slider-track {
+            background-color: #e5e7eb; /* bg-gray-200 */
+            height: 0.5rem; /* h-2 */
+            border-radius: 9999px; /* rounded-full */
+            position: relative;
+            cursor: pointer;
+        }
+
+        /* 自定义滑块进度 */
+        .slider-progress {
+            background-color: #f59e0b; /* bg-amber-500 */
+            height: 100%;
+            border-radius: 9999px;
+            position: absolute;
+            left: 0;
+            top: 0;
+        }
+
+        /* 自定义滑块手柄 */
+        .slider-thumb {
+            width: 0.85rem; /* 约 w-3.5 */
+            height: 1.25rem; /* h-5 */
+            background-color: white;
+            border-radius: 0.125rem; /* rounded-sm */
+            box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            /* 调整 -ml-1.5 左右以使其中心对齐 */
+            margin-left: -0.425rem; 
+        }
+        /* 设备卡片滑动动作 */
+        .device-card-swipe-container {
+            position: relative;
+            overflow: hidden;
+            border-radius: 0.75rem;
+        }
+        .device-card-button {
+            transition: transform 0.24s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            will-change: transform;
+            touch-action: pan-y;
+        }
+        .device-card-action {
+            position: absolute;
+            top: 0;
+            right: 0;
+            bottom: 0;
+            width: 7.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background-color: #dc2626;
+            color: #fff;
+            font-weight: 600;
+            letter-spacing: 0.1em;
+            border-radius: 0.75rem;
+        }
+        .device-card-action:focus-visible {
+            outline: 2px solid #fecdd3;
+            outline-offset: 2px;
+        }
+        .device-card-swipe-container.is-revealed .device-card-button {
+            transition: transform 0.24s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        .rotate-180 {
+            transform: rotate(180deg);
+        }
+
+        /* OTA日志文本区域样式 */
+        #ota-log::placeholder {
+            color: #4b5563; /* text-gray-600 */
+        }
+
+        /* 默认滑块初始位置：将 inline style 转为 CSS */
+        #duration-progress { width: 30%; }
+        #duration-thumb { left: 30%; }
+        #power-progress { width: 100%; }
+        #power-thumb { left: 100%; }
+        #induction-duration-progress { width: 8.5%; }
+        #induction-duration-thumb { left: 8.5%; }
+        #presence-power-progress { width: 50%; }
+        #presence-power-thumb { left: 50%; }
+        #absence-power-progress { width: 10%; }
+        #absence-power-thumb { left: 10%; }
+        #morning-time-progress { width: 20%; }
+        #morning-time-thumb { left: 20%; }
+        #morning-power-progress { width: 30%; }
+        #morning-power-thumb { left: 30%; }
+        #first-power-progress { width: 80%; }
+        #first-power-thumb { left: 80%; }
+        #end-power-progress { width: 20%; }
+        #end-power-thumb { left: 20%; }
+        #ota-progress-bar { width: 0%; }
+        #temp-charge-high-progress { width: 50%; }
+        #temp-charge-high-thumb { left: 50%; }
+        #temp-discharge-high-progress { width: 50%; }
+        #temp-discharge-high-thumb { left: 50%; }
+        #temp-charge-low-progress { width: 50%; }
+        #temp-charge-low-thumb { left: 50%; }
+        #temp-discharge-low-progress { width: 50%; }
+        #temp-discharge-low-thumb { left: 50%; }
+        #power-saving-start-progress { width: 40%; }
+        #power-saving-start-thumb { left: 40%; }
+        #power-saving-super-progress { width: 33%; }
+        #power-saving-super-thumb { left: 33%; }
+        #winter-duration-progress { width: 40%; }
+        #winter-duration-thumb { left: 40%; }
+        #winter-power-progress { width: 50%; }
+        #winter-power-thumb { left: 50%; }
+        #time-control-delay-progress { width: 50%; }
+        #time-control-delay-thumb { left: 50%; }
+        #time-control-on-voltage-progress { width: 40%; }
+        #time-control-on-voltage-thumb { left: 40%; }
+        #time-control-off-voltage-progress { width: 60%; }
+        #time-control-off-voltage-thumb { left: 60%; }
+        #time-control-current-progress { width: 50%; }
+        #time-control-current-thumb { left: 50%; }
+
+        body[data-theme="dark"] {
+            background: linear-gradient(to bottom, #0f172a, #111827);
+            color: #f3f4f6;
+            color-scheme: dark;
+        }
+
+        .app-shell {
+            background: linear-gradient(to bottom, #f9fafb, #ffffff);
+            transition: background 0.3s ease, box-shadow 0.3s ease;
+            box-shadow: 0 20px 50px rgba(15, 23, 42, 0.05);
+        }
+
+        body[data-theme="dark"] .app-shell {
+            background: linear-gradient(to bottom, #0f172a, #111827) !important;
+            box-shadow: 0 25px 60px rgba(0, 0, 0, 0.45);
+        }
+
+        body[data-theme="dark"] .bg-white,
+        body[data-theme="dark"] .bg-gray-50,
+        body[data-theme="dark"] .bg-gray-100,
+        body[data-theme="dark"] .bg-gray-200,
+        body[data-theme="dark"] .bg-slate-50,
+        body[data-theme="dark"] .bg-slate-100 {
+            background-color: #1f2937 !important;
+        }
+
+        body[data-theme="dark"] .text-gray-900,
+        body[data-theme="dark"] .text-gray-800,
+        body[data-theme="dark"] .text-gray-700 {
+            color: #f9fafb !important;
+        }
+
+        body[data-theme="dark"] .text-gray-600,
+        body[data-theme="dark"] .text-gray-500 {
+            color: #d1d5db !important;
+        }
+
+        body[data-theme="dark"] .text-gray-400,
+        body[data-theme="dark"] .text-gray-300 {
+            color: #9ca3af !important;
+        }
+
+        body[data-theme="dark"] .border-gray-100,
+        body[data-theme="dark"] .border-gray-200,
+        body[data-theme="dark"] .divide-gray-200 {
+            border-color: #374151 !important;
+        }
+
+        body[data-theme="dark"] .slider-track {
+            background-color: #374151;
+        }
+
+        body[data-theme="dark"] .slider-thumb {
+            background-color: #111827;
+            border: 1px solid #fcd34d;
+        }
+
+        body[data-theme="dark"] #ota-log {
+            background-color: #111827;
+            color: #f3f4f6;
+        }
+
+        body[data-theme="dark"] #ota-log::placeholder {
+            color: #9ca3af;
+        }
+
+        #theme-toggle {
+            transition: background-color 0.2s ease, color 0.2s ease;
+        }
+
+        #theme-toggle .icon-moon {
+            display: none;
+        }
+
+        body[data-theme="dark"] #theme-toggle {
+            background-color: #374151;
+            color: #fef3c7;
+        }
+
+        body[data-theme="dark"] #theme-toggle .icon-sun {
+            display: none;
+        }
+
+        body[data-theme="dark"] #theme-toggle .icon-moon {
+            display: inline;
+        }
+
+        body[data-theme="light"] #theme-toggle .icon-sun {
+            display: inline;
+        }
+
+        body[data-theme="light"] #theme-toggle .icon-moon {
+            display: none;
+        }
+
+        .glass-nav {
+            background-color: rgba(249, 250, 251, 0.9);
+            -webkit-backdrop-filter: blur(20px);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid rgba(226, 232, 240, 0.6);
+        }
+
+        body[data-theme="dark"] .glass-nav {
+            background-color: rgba(15, 23, 42, 0.85);
+            border-bottom-color: rgba(148, 163, 184, 0.4);
+            box-shadow: 0 10px 40px rgba(15, 23, 42, 0.6);
+        }
+
+        .segment-tab-wrapper {
+            background-color: rgba(255, 255, 255, 0.85);
+            -webkit-backdrop-filter: blur(16px);
+            backdrop-filter: blur(16px);
+            border-radius: 0.75rem;
+            border: 1px solid rgba(226, 232, 240, 0.8);
+            padding: 0.5rem;
+        }
+
+        body[data-theme="dark"] .segment-tab-wrapper {
+            background-color: rgba(15, 23, 42, 0.85);
+            border-color: rgba(71, 85, 105, 0.8);
+            box-shadow: 0 15px 35px rgba(2, 6, 23, 0.6);
+        }
+
+        .live-status-card {
+            border-radius: 1.25rem;
+            padding: 0.9rem;
+            border: 1px solid #e5e7eb;
+            background: linear-gradient(145deg, #f8fafc, #ffffff);
+            box-shadow: 0 12px 24px rgba(15, 23, 42, 0.08);
+            color: #0f172a;
+        }
+
+        .live-status-caption {
+            font-size: 0.65rem;
+            letter-spacing: 0.3em;
+            text-transform: uppercase;
+            color: #9ca3af;
+        }
+
+        .live-status-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+        }
+
+        .live-status-label {
+            font-size: 0.7rem;
+            color: #6b7280;
+        }
+
+        .live-status-value {
+            font-size: 1.1rem;
+            font-weight: 600;
+        }
+
+        .live-status-strong {
+            font-weight: 600;
+        }
+
+        .live-status-item {
+            border-radius: 1rem;
+            padding: 0.75rem;
+            border: 1px solid #e5e7eb;
+            background: #ffffff;
+        }
+
+        .live-status-dot {
+            width: 0.4rem;
+            height: 0.4rem;
+            border-radius: 9999px;
+            background: #f59e0b;
+            box-shadow: 0 0 0 4px rgba(251, 191, 36, 0.2);
+        }
+
+        .live-status-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            padding: 0.2rem 0.55rem;
+            border-radius: 9999px;
+            border: 1px solid rgba(16, 185, 129, 0.25);
+            background: rgba(16, 185, 129, 0.12);
+            color: #047857;
+            font-size: 0.65rem;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .live-status-mini {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.5rem;
+            border-radius: 0.9rem;
+            padding: 0.5rem 0.65rem;
+            border: 1px solid #e5e7eb;
+            background: #ffffff;
+        }
+
+        .live-status-chip {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.35rem;
+            border-radius: 0.9rem;
+            padding: 0.45rem 0.5rem;
+            border: 1px solid #e5e7eb;
+            background: #f8fafc;
+            font-size: 0.7rem;
+            color: #64748b;
+        }
+
+        .live-status-chip strong {
+            font-weight: 600;
+            color: #0f172a;
+        }
+
+        .live-status-metric {
+            border-radius: 1rem;
+            padding: 0.75rem;
+            border: 1px solid #e5e7eb;
+        }
+
+        .live-status-metric.metric-warm {
+            background: linear-gradient(145deg, rgba(251, 191, 36, 0.18), rgba(248, 113, 113, 0.12));
+        }
+
+        .live-status-metric.metric-cool {
+            background: linear-gradient(145deg, rgba(16, 185, 129, 0.18), rgba(56, 189, 248, 0.12));
+        }
+
+        .live-status-metric.metric-calm {
+            background: linear-gradient(145deg, rgba(56, 189, 248, 0.18), rgba(99, 102, 241, 0.12));
+        }
+
+        .live-status-metric.metric-emerald {
+            background: linear-gradient(145deg, rgba(52, 211, 153, 0.18), rgba(34, 197, 94, 0.12));
+        }
+
+        body[data-theme="dark"] .live-status-card {
+            border-color: #1f2937;
+            background: linear-gradient(145deg, #0f172a, #111827);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+            color: #e5e7eb;
+        }
+
+        body[data-theme="dark"] .live-status-caption,
+        body[data-theme="dark"] .live-status-label {
+            color: #94a3b8;
+        }
+
+        body[data-theme="dark"] .live-status-item {
+            border-color: rgba(148, 163, 184, 0.18);
+            background: rgba(15, 23, 42, 0.65);
+        }
+
+        body[data-theme="dark"] .live-status-pill {
+            border-color: rgba(16, 185, 129, 0.35);
+            background: rgba(16, 185, 129, 0.2);
+            color: #6ee7b7;
+        }
+
+        body[data-theme="dark"] .live-status-mini,
+        body[data-theme="dark"] .live-status-chip {
+            border-color: rgba(148, 163, 184, 0.18);
+            background: rgba(15, 23, 42, 0.65);
+            color: #cbd5f5;
+        }
+
+        body[data-theme="dark"] .live-status-chip strong {
+            color: #f9fafb;
+        }
+
+        body[data-theme="dark"] .live-status-metric {
+            border-color: rgba(148, 163, 184, 0.18);
+        }
+
+        body[data-theme="dark"] .live-status-metric.metric-warm {
+            background: linear-gradient(145deg, rgba(251, 191, 36, 0.2), rgba(244, 63, 94, 0.16));
+        }
+
+        body[data-theme="dark"] .live-status-metric.metric-cool {
+            background: linear-gradient(145deg, rgba(16, 185, 129, 0.2), rgba(56, 189, 248, 0.16));
+        }
+
+        body[data-theme="dark"] .live-status-metric.metric-calm {
+            background: linear-gradient(145deg, rgba(56, 189, 248, 0.2), rgba(99, 102, 241, 0.16));
+        }
+
+        body[data-theme="dark"] .live-status-metric.metric-emerald {
+            background: linear-gradient(145deg, rgba(52, 211, 153, 0.2), rgba(34, 197, 94, 0.16));
+        }
+
+    </style>
+</head>
+<body class="text-gray-800" data-theme="light">
+
+    <!-- 模拟移动端设备容器 -->
+    <div class="app-shell max-w-md mx-auto min-h-screen flex flex-col">
+
+        <!-- 1. 顶部状态栏 (模拟) -->
+        <header class="px-4 pt-2 pb-1 flex justify-between items-center text-sm font-bold text-gray-900">
+            <!-- ... 顶部状态栏 ... -->
+            <!-- 左侧时间 -->
+            <!-- 修改：添加 ID "real-time-clock" -->
+            <div id="real-time-clock">18:30</div>
+            <!-- 右侧图标组 -->
+            <div class="flex items-center space-x-1.5">
+                <!-- 网络信号 - 模拟三个点 -->
+                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="12" cy="12" r="1.5" fill="currentColor"/>
+                    <circle cx="17" cy="12" r="1.5" fill="currentColor"/>
+                    <circle cx="7" cy="12" r="1.5" fill="currentColor"/>
+                </svg>
+                <!-- Wi-Fi 信号 -->
+                <svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M8.288 15.038C7.236 13.986 7 12.556 7 11.522C7 9.808 7.63 8.163 8.753 6.998M15.712 15.038C16.764 13.986 17 12.556 17 11.522C17 9.808 16.37 8.163 15.247 6.998M12 18.75a.75.75 0 100-1.5.75.75 0 000 1.5zM12 5.25a.75.75 0 100-1.5.75.75 0 000 1.5zM12 12a2.25 2.25 0 100-4.5 2.25 2.25 0 000 4.5z" />
+                </svg>
+                <!-- 蜂窝信号 -->
+                <svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M3 12h18M3 6h18M3 18h18" />
+                </svg>
+                <!-- 电池图标 -->
+                <div class="flex items-center space-x-0.5">
+                    <svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M21 10.5V13.5a3 3 0 01-3 3h-13.5a3 3 0 01-3-3V10.5a3 3 0 013-3h13.5a3 3 0 013 3z" />
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M22.5 12a.75.75 0 01.75.75v.008a.75.75 0 01-.75.75h-1.5a.75.75 0 01-.75-.75V12a.75.75 0 01.75-.75h1.5z" />
+                        <path d="M4 11.25h13.5v1.5H4v-1.5z" fill="currentColor"/>
+                    </svg>
+                    <span class="text-xs font-semibold">81</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- 主题模式切换 -->
+        <div class="px-4 py-2 flex justify-end">
+            <button id="theme-toggle" type="button" class="inline-flex items-center gap-2 rounded-full bg-gray-200 text-gray-700 text-sm font-medium px-3 py-1.5 shadow" aria-pressed="false">
+                <svg class="w-4 h-4 icon-sun" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v1.5m0 15V21m9-9h-1.5M4.5 12H3m15.364-6.364l-1.06 1.06M6.697 17.303l-1.06 1.06m0-12.728l1.06 1.06m10.607 10.607l1.06 1.06M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                <svg class="w-4 h-4 icon-moon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M21 12.79A9 9 0 1111.21 3a7 7 0 009.79 9.79z" />
+                </svg>
+                <span id="theme-toggle-label">浅色模式</span>
+            </button>
+        </div>
+
+        <!-- 设备信息列表 -->
+        <section id="device-list-view" class="px-4 py-4 space-y-4">
+            <div class="flex items-center justify-between">
+                <h2 class="text-lg font-bold text-gray-900">设备信息</h2>
+                <span class="text-xs text-gray-500">请选择设备以查看详情</span>
+            </div>
+            <div class="space-y-3">
+                <div class="relative device-card-swipe-container w-full" data-swipe-container>
+                    <button type="button" class="device-card-action" data-disconnect-button tabindex="-1" aria-label="取消连接">取消连接</button>
+                    <button type="button"
+                            data-device-card
+                            data-device-id="demo1"
+                            data-mode="radar"
+                            data-connected="true"
+                            data-connectable="true"
+                            data-device-label="MPPT-DEMO1(已连接)"
+                            data-connected-label="MPPT-DEMO1(已连接)"
+                            data-disconnected-label="MPPT-DEMO1(可连接)"
+                            data-connected-signal="+56dB"
+                            class="device-card-button w-full bg-white rounded-xl shadow-sm border border-gray-100 p-4 text-left hover:shadow-md transition-shadow focus:outline-none focus:ring-2 focus:ring-amber-400">
+                        <div class="flex items-center justify-between">
+                            <p class="text-base font-semibold text-gray-900">
+                                MPPT-DEMO1
+                                <span class="text-sm text-amber-600 font-medium" data-connection-status>(已连接)</span>
+                            </p>
+                            <span class="inline-flex items-center gap-1 text-sm font-semibold text-green-600" data-connection-badge>
+                                <svg class="w-4 h-4 hidden" data-connection-icon xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 8.25C6.5 4 17.5 4 21.75 8.25M5.25 11.25c3-3 10.5-3 13.5 0M8.25 14.25a6 6 0 018.5 0M12 18.75h.008v.008H12z" />
+                                </svg>
+                                <span data-connection-badge-text class="hidden">可连接</span>
+                                <span data-connection-signal>+56dB</span>
+                            </span>
+                        </div>
+                        <p class="mt-2 text-xs text-amber-500 hidden" data-connection-hint>轻触尝试连接该设备</p>
+                        <div class="mt-3 grid grid-cols-2 gap-3 text-sm text-gray-500" data-connection-details>
+                            <div class="flex justify-between"><span>已开灯时间</span><span class="text-gray-900 font-medium">27m</span></div>
+                            <div class="flex justify-between"><span>感应模式</span><span class="text-gray-900 font-medium" data-mode-field>雷达</span></div>
+                            <div class="flex justify-between"><span>晨亮时间</span><span class="text-gray-900 font-medium">06:00</span></div>
+                            <div class="flex justify-between"><span>关灯时间</span><span class="text-gray-900 font-medium">07:00</span></div>
+                        </div>
+                    </button>
+                </div>
+
+                <div class="relative device-card-swipe-container w-full" data-swipe-container>
+                    <button type="button" class="device-card-action" data-disconnect-button tabindex="-1" aria-label="取消连接">取消连接</button>
+                    <button type="button"
+                            data-device-card
+                            data-device-id="demo2"
+                            data-mode="average"
+                            data-connected="true"
+                            data-connectable="true"
+                            data-device-label="MPPT-DEMO2(已连接)"
+                            data-connected-label="MPPT-DEMO2(已连接)"
+                            data-disconnected-label="MPPT-DEMO2(可连接)"
+                            data-connected-signal="+48dB"
+                            class="device-card-button w-full bg-white rounded-xl shadow-sm border border-gray-100 p-4 text-left hover:shadow-md transition-shadow focus:outline-none focus:ring-2 focus:ring-amber-400">
+                        <div class="flex items-center justify-between">
+                            <p class="text-base font-semibold text-gray-900">
+                                MPPT-DEMO2
+                                <span class="text-sm text-amber-600 font-medium" data-connection-status>(已连接)</span>
+                            </p>
+                            <span class="inline-flex items-center gap-1 text-sm font-semibold text-green-600" data-connection-badge>
+                                <svg class="w-4 h-4 hidden" data-connection-icon xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 8.25C6.5 4 17.5 4 21.75 8.25M5.25 11.25c3-3 10.5-3 13.5 0M8.25 14.25a6 6 0 018.5 0M12 18.75h.008v.008H12z" />
+                                </svg>
+                                <span data-connection-badge-text class="hidden">可连接</span>
+                                <span data-connection-signal>+48dB</span>
+                            </span>
+                        </div>
+                        <p class="mt-2 text-xs text-amber-500 hidden" data-connection-hint>轻触尝试连接该设备</p>
+                        <div class="mt-3 grid grid-cols-2 gap-3 text-sm text-gray-500" data-connection-details>
+                            <div class="flex justify-between"><span>已开灯时间</span><span class="text-gray-900 font-medium">15m</span></div>
+                            <div class="flex justify-between"><span>感应模式</span><span class="text-gray-900 font-medium" data-mode-field>平均</span></div>
+                            <div class="flex justify-between"><span>晨亮时间</span><span class="text-gray-900 font-medium">05:45</span></div>
+                            <div class="flex justify-between"><span>关灯时间</span><span class="text-gray-900 font-medium">06:45</span></div>
+                        </div>
+                    </button>
+                </div>
+
+                <div class="relative device-card-swipe-container w-full" data-swipe-container>
+                    <button type="button" class="device-card-action" data-disconnect-button tabindex="-1" aria-label="取消连接">取消连接</button>
+                    <button type="button"
+                            data-device-card
+                            data-device-id="demo4"
+                            data-connectable="true"
+                            data-connected="false"
+                            data-device-label="MPPT-DEMO4(可连接)"
+                            data-connected-label="MPPT-DEMO4(已连接)"
+                            data-disconnected-label="MPPT-DEMO4(可连接)"
+                            data-connected-signal="+52dB"
+                            data-mode="radar"
+                            class="device-card-button w-full bg-white rounded-xl border border-dashed border-amber-300 p-4 text-left hover:shadow-md transition-shadow focus:outline-none focus:ring-2 focus:ring-amber-400">
+                        <div class="flex items-center justify-between">
+                            <p class="text-base font-semibold text-gray-900">
+                                MPPT-DEMO4
+                                <span class="text-sm text-amber-600 font-medium" data-connection-status>(可连接)</span>
+                            </p>
+                            <span class="inline-flex items-center gap-1 text-sm font-semibold text-amber-600" data-connection-badge>
+                                <svg class="w-4 h-4" data-connection-icon xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 8.25C6.5 4 17.5 4 21.75 8.25M5.25 11.25c3-3 10.5-3 13.5 0M8.25 14.25a6 6 0 018.5 0M12 18.75h.008v.008H12z" />
+                                </svg>
+                                <span data-connection-badge-text>可连接</span>
+                                <span data-connection-signal class="hidden">+52dB</span>
+                            </span>
+                        </div>
+                        <p class="mt-2 text-xs text-amber-500" data-connection-hint>轻触尝试连接该设备</p>
+                        <div class="mt-3 grid grid-cols-2 gap-3 text-sm text-gray-500 hidden" data-connection-details>
+                            <div class="flex justify-between"><span>已开灯时间</span><span class="text-gray-900 font-medium">12m</span></div>
+                            <div class="flex justify-between"><span>感应模式</span><span class="text-gray-900 font-medium" data-mode-field>雷达</span></div>
+                            <div class="flex justify-between"><span>晨亮时间</span><span class="text-gray-900 font-medium">05:40</span></div>
+                            <div class="flex justify-between"><span>关灯时间</span><span class="text-gray-900 font-medium">06:40</span></div>
+                        </div>
+                    </button>
+                </div>
+                <div class="w-full bg-gray-50 rounded-xl border border-dashed border-gray-300 p-4 text-left opacity-80 device-card-disabled">
+                    <div class="flex items-center justify-between">
+                        <p class="text-base font-semibold text-gray-600">MPPT-DEMO3 <span class="text-sm text-gray-400 font-medium">(未连接)</span></p>
+                        <span class="text-sm font-semibold text-gray-400">-dB</span>
+                    </div>
+                    <div class="mt-3 grid grid-cols-2 gap-3 text-sm text-gray-400">
+                        <div class="flex justify-between"><span>已开灯时间</span><span>-</span></div>
+                        <div class="flex justify-between"><span>感应模式</span><span>-</span></div>
+                        <div class="flex justify-between"><span>晨亮时间</span><span>-</span></div>
+                        <div class="flex justify-between"><span>关灯时间</span><span>-</span></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <div id="device-detail-view" class="hidden">
+
+        <!-- 2. 导航栏 (Header) -->
+        <!-- 修改：移除了 'bg-inherit'，添加了 'bg-gray-50/90' (半透明背景) 和 'backdrop-blur-sm' (高斯模糊) -->
+        <!-- 更新：将 z-10 提升到 z-50，并将 backdrop-blur-sm 加强为 backdrop-blur-lg -->
+        <nav class="glass-nav p-4 flex justify-between items-center sticky top-0 z-50">
+            <!-- ?????? -->
+            <div class="w-6 h-6 cursor-pointer" id="nav-back-button" role="button" aria-label="??????" tabindex="0">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-6 h-6 text-gray-700">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+                </svg>
+            </div>
+            <!-- ???? -->
+            <h1 class="text-lg font-bold text-gray-900" id="nav-title">MPPT-DEMO1(???)</h1>
+            <!-- ???? -->
+            <div class="w-6 h-6"></div>
+        </nav>
+
+        <!-- 新增: OTA / 控制面板 切换 -->
+        <section class="px-4 pb-2 pt-0 flex justify-center">
+            <div class="flex items-center bg-gray-200 rounded-lg p-0.5" id="view-tabs">
+                <button data-view="ota" class="view-tab px-6 py-1 text-sm font-medium text-gray-700 rounded-md">OTA升级</button>
+                <button data-view="control" class="view-tab px-6 py-1 text-sm font-medium text-white bg-amber-500 rounded-md shadow">控制面板</button>
+            </div>
+        </section>
+
+        <!-- 页面主要内容 -->
+        
+        <!-- =================================== -->
+        <!-- 3. 控制面板页面 (ID: control-view) -->
+        <!-- =================================== -->
+        <main id="control-view" class="flex-1 overflow-y-auto pb-8">
+
+            <!-- 3. 核心状态 (Live Status 风格) -->
+            <section class="px-4 pt-3 pb-4">
+                <div class="live-status-card">
+                    <div class="flex items-center justify-between gap-3">
+                        <div>
+                            <div class="flex items-center gap-2">
+                                <span class="live-status-dot" aria-hidden="true"></span>
+                                <p class="live-status-caption">Live Status</p>
+                            </div>
+                            <p id="current-mode-display" class="mt-1 live-status-title">雷达</p>
+                            <p class="mt-1 live-status-label">
+                                电池类型 <span class="live-status-strong">磷酸铁锂</span>
+                            </p>
+                        </div>
+                        <div class="text-right space-y-1">
+                            <div class="live-status-pill">
+                                <svg class="w-3.5 h-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M21 10.5V13.5a3 3 0 0 1-3 3H4.5a3 3 0 0 1-3-3V10.5a3 3 0 0 1 3-3H18a3 3 0 0 1 3 3z" />
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M22.5 12a.75.75 0 0 1 .75.75v.5a.75.75 0 0 1-.75.75H21v-2h1.5z" />
+                                </svg>
+                                电池剩余 100%
+                            </div>
+                            <p class="live-status-label flex items-center justify-end gap-1">
+                                <svg class="w-3.5 h-3.5 text-amber-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6l4 2" />
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 21a9 9 0 1 1 0-18 9 9 0 0 1 0 18z" />
+                                </svg>
+                                已开灯 27m
+                            </p>
+                        </div>
+                    </div>
+                    <div class="mt-3 grid grid-cols-2 gap-2">
+                        <div class="live-status-mini">
+                            <p class="live-status-label flex items-center gap-1">
+                                <svg class="w-3.5 h-3.5 text-amber-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6l4 2" />
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 21a9 9 0 1 1 0-18 9 9 0 0 1 0 18z" />
+                                </svg>
+                                晨亮时间
+                            </p>
+                            <p id="morning-time-display" class="live-status-value">06:00</p>
+                        </div>
+                        <div class="live-status-mini">
+                            <p class="live-status-label flex items-center gap-1">
+                                <svg class="w-3.5 h-3.5 text-slate-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M21 12.79A9 9 0 1 1 11.21 3a7 7 0 0 0 9.79 9.79z" />
+                                </svg>
+                                关灯时间
+                            </p>
+                            <p id="lights-off-display" class="live-status-value">07:00</p>
+                        </div>
+                    </div>
+                    <div class="mt-2 grid grid-cols-3 gap-2 text-center">
+                        <div class="live-status-chip">
+                            <svg class="w-3.5 h-3.5 text-amber-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v2m0 14v2m9-9h-2M5 12H3m14.364-5.364-1.414 1.414M8.05 15.95l-1.414 1.414m0-9.9 1.414 1.414m9.9 9.9 1.414 1.414" />
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0z" />
+                            </svg>
+                            亮度 <strong>85%</strong>
+                        </div>
+                        <div class="live-status-chip">
+                            <svg class="w-3.5 h-3.5 text-sky-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M4 13h4l2-4 4 8 2-4h4" />
+                            </svg>
+                            电压 <strong>12.8V</strong>
+                        </div>
+                        <div class="live-status-chip">
+                            <svg class="w-3.5 h-3.5 text-indigo-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M13 3 4 14h6l-1 7 9-11h-6l1-7z" />
+                            </svg>
+                            电流 <strong>1.5A</strong>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 5. 模式切换按钮 -->
+            <section class="px-4 py-2">
+                <div class="flex justify-around items-center" id="mode-buttons">
+                    <!-- 修正：雷达模式应为默认激活，以匹配初始显示的板块 -->
+                    <button data-mode="radar" class="mode-tab bg-amber-500 text-white shadow-md font-semibold py-2 px-6 rounded-full text-sm">雷达模式</button>
+                    <button data-mode="time" class="mode-tab bg-gray-200 text-gray-700 font-semibold py-2 px-6 rounded-full text-sm">时控模式</button>
+                    <button data-mode="average" class="mode-tab bg-gray-200 text-gray-700 font-semibold py-2 px-6 rounded-full text-sm">平均模式</button>
+                </div>
+            </section>
+
+            <!-- 6. 基础设置 (所有模式通用) -->
+            <!-- 新增ID, 用于JS控制 -->
+            <section id="section-basic-settings" data-collapsible-section data-collapsible-default="open" class="px-4 py-4">
+                <div class="flex items-center justify-between mb-2">
+                    <h2 class="text-base font-bold text-gray-900">基础设置</h2>
+                    <button type="button" class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-gray-100 text-gray-600 hover:text-gray-900 hover:bg-gray-200 transition" data-collapsible-toggle aria-controls="section-basic-settings-content" aria-expanded="false" aria-label="展开">
+                        <svg class="w-4 h-4 transition-transform duration-200" data-collapsible-icon xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                        </svg>
+                    </button>
+                </div>
+                <div id="section-basic-settings-content" class="hidden" data-collapsible-content>
+                    <div class="bg-white rounded-lg shadow-sm">
+                        <!-- 列表项 -->
+                        <div class="flex justify-between items-center py-3 px-4">
+                            <div class="flex items-center">
+                                <span class="text-sm font-medium text-gray-700">过充电压</span>
+                            </div>
+                            <div class="flex items-center space-x-2">
+                                 <!-- 上一个 按钮 -->
+                                <button id="setting-overcharge-voltage-prev" class="p-1 text-gray-500 hover:text-gray-800 focus:outline-none focus:ring-2 focus:ring-amber-400 rounded-md" aria-label="降低过充电压" title="降低过充电压">
+                                    <svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+                                    </svg>
+                                </button>
+                                <!-- 值 -->
+                                <span id="setting-overcharge-voltage" class="bg-gray-100 text-gray-600 text-sm py-1 px-3 rounded-md w-24 text-center">3.4V</span>
+                                <!-- 下一个 按钮 -->
+                                <button id="setting-overcharge-voltage-next" class="p-1 text-gray-500 hover:text-gray-800 focus:outline-none focus:ring-2 focus:ring-amber-400 rounded-md" aria-label="提高过充电压" title="提高过充电压">
+                                    <svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+                        <!-- 列表项 -->
+                        <div class="flex justify-between items-center py-3 px-4 border-b border-gray-100">
+                            <div class="flex items-center">
+                                <span class="text-sm font-medium text-gray-700">过放电压</span>
+                            </div>
+                            <div class="flex items-center space-x-2">
+                                 <!-- 上一个 按钮 -->
+                                <button id="setting-overdischarge-voltage-prev" class="p-1 text-gray-500 hover:text-gray-800 focus:outline-none focus:ring-2 focus:ring-amber-400 rounded-md" aria-label="降低过放电压" title="降低过放电压">
+                                    <svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+                                    </svg>
+                                </button>
+                                <!-- 值 -->
+                                <span id="setting-overdischarge-voltage" class="bg-gray-100 text-gray-600 text-sm py-1 px-3 rounded-md w-24 text-center">2.6V</span>
+                                <!-- 下一个 按钮 -->
+                                <button id="setting-overdischarge-voltage-next" class="p-1 text-gray-500 hover:text-gray-800 focus:outline-none focus:ring-2 focus:ring-amber-400 rounded-md" aria-label="提高过放电压" title="提高过放电压">
+                                    <svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+                        <!-- 列表项 -->
+                        <div class="flex justify-between items-center py-3 px-4">
+                            <div class="flex items-center">
+                                <span class="text-sm font-medium text-gray-700">感应灵敏度</span>
+                            </div>
+                            <div class="flex items-center space-x-2">
+                                 <!-- 上一个 按钮 -->
+                                <button id="setting-sensitivity-prev" class="p-1 text-gray-500 hover:text-gray-800 focus:outline-none focus:ring-2 focus:ring-amber-400 rounded-md" aria-label="降低灵敏度" title="降低灵敏度">
+                                    <svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+                                    </svg>
+                                </button>
+                                <!-- 值 -->
+                                <span id="setting-sensitivity" class="bg-gray-100 text-gray-600 text-sm py-1 px-3 rounded-md w-24 text-center">中</span>
+                                <!-- 下一个 按钮 -->
+                                <button id="setting-sensitivity-next" class="p-1 text-gray-500 hover:text-gray-800 focus:outline-none focus:ring-2 focus:ring-amber-400 rounded-md" aria-label="提高灵敏度" title="提高灵敏度">
+                                    <svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+                        <!-- 列表项 -->
+                        <div class="flex justify-between items-center py-3 px-4 border-t border-b border-gray-100">
+                            <div class="flex items-center">
+                                <span class="text-sm font-medium text-gray-700">省电模式</span>
+                            </div>
+                            <div class="flex items-center space-x-2">
+                                <!-- 上一个 按钮 -->
+                                <button id="setting-power-saving-prev" class="p-1 text-gray-500 hover:text-gray-800 focus:outline-none focus:ring-2 focus:ring-amber-400 rounded-md" aria-label="切换省电模式" title="切换省电模式">
+                                    <svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+                                    </svg>
+                                </button>
+                                <!-- 值 -->
+                                <a id="setting-power-saving" href="#section-power-saving" class="bg-gray-100 text-gray-600 text-sm py-1 px-3 rounded-md w-24 text-center no-underline hover:text-amber-600 transition inline-flex items-center justify-center">关</a>
+                                <!-- 下一个 按钮 -->
+                                <button id="setting-power-saving-next" class="p-1 text-gray-500 hover:text-gray-800 focus:outline-none focus:ring-2 focus:ring-amber-400 rounded-md" aria-label="切换省电模式" title="切换省电模式">
+                                    <svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+                        <!-- 列表项 -->
+                        <div class="flex justify-between items-center py-3 px-4 border-b border-gray-100">
+                            <div class="flex items-center">
+                                <span class="text-sm font-medium text-gray-700">双季节</span>
+                            </div>
+                            <div class="flex items-center space-x-2">
+                                <!-- 上一个 按钮 -->
+                                <button id="setting-dual-season-prev" class="p-1 text-gray-500 hover:text-gray-800 focus:outline-none focus:ring-2 focus:ring-amber-400 rounded-md" aria-label="切换双季节" title="切换双季节">
+                                    <svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+                                    </svg>
+                                </button>
+                                <!-- 值 -->
+                                <a id="setting-dual-season" href="#section-winter-adjustment" class="bg-gray-100 text-gray-600 text-sm py-1 px-3 rounded-md w-24 text-center no-underline hover:text-amber-600 transition inline-flex items-center justify-center">否</a>
+                                <!-- 下一个 按钮 -->
+                                <button id="setting-dual-season-next" class="p-1 text-gray-500 hover:text-gray-800 focus:outline-none focus:ring-2 focus:ring-amber-400 rounded-md" aria-label="切换双季节" title="切换双季节">
+                                    <svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+                        <div id="basic-settings-more" class="hidden">
+                            <!-- 列表项 -->
+                            <div class="flex justify-between items-center py-3 px-4 border-t border-b border-gray-100">
+                                <div class="flex items-center">
+                                    <span class="text-sm font-medium text-gray-700">电池类型</span>
+                                </div>
+                                <div class="flex items-center space-x-2">
+                                    <!-- 上一个 按钮 -->
+                                    <button id="setting-battery-type-prev" class="p-1 text-gray-500 hover:text-gray-800 focus:outline-none focus:ring-2 focus:ring-amber-400 rounded-md" aria-label="上一种电池类型" title="上一种电池类型">
+                                        <svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+                                        </svg>
+                                    </button>
+                                    <!-- 值 -->
+                                    <span id="setting-battery-type" class="bg-gray-100 text-gray-600 text-sm py-1 px-3 rounded-md w-24 text-center">磷酸铁锂</span>
+                                    <!-- 下一个 按钮 -->
+                                    <button id="setting-battery-type-next" class="p-1 text-gray-500 hover:text-gray-800 focus:outline-none focus:ring-2 focus:ring-amber-400 rounded-md" aria-label="下一种电池类型" title="下一种电池类型">
+                                        <svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                                        </svg>
+                                    </button>
+                                </div>
+                            </div>
+                            <!-- 列表项 -->
+                            <div class="flex justify-between items-center py-3 px-4">
+                                <div class="flex items-center">
+                                    <span class="text-sm font-medium text-gray-700">电池串数</span>
+                                </div>
+                                <div class="flex items-center space-x-2">
+                                    <!-- 上一个 按钮 -->
+                                    <button id="setting-battery-series-prev" class="p-1 text-gray-500 hover:text-gray-800 focus:outline-none focus:ring-2 focus:ring-amber-400 rounded-md" aria-label="减少串数" title="减少串数">
+                                        <svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+                                        </svg>
+                                    </button>
+                                    <!-- 值 -->
+                                    <span id="setting-battery-series" class="bg-gray-100 text-gray-600 text-sm py-1 px-3 rounded-md w-24 text-center">4串</span>
+                                    <!-- 下一个 按钮 -->
+                                    <button id="setting-battery-series-next" class="p-1 text-gray-500 hover:text-gray-800 focus:outline-none focus:ring-2 focus:ring-amber-400 rounded-md" aria-label="增加串数" title="增加串数">
+                                        <svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                                        </svg>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="px-4 py-3 border-t border-gray-100">
+                            <button id="basic-settings-more-toggle" type="button" class="w-full flex items-center justify-center gap-2 text-sm font-medium text-gray-600 hover:text-amber-600 focus:outline-none focus:ring-2 focus:ring-amber-400 rounded-md" aria-expanded="false" aria-controls="basic-settings-more" aria-label="更多">
+                                <span data-basic-more-label>更多</span>
+                                <svg class="w-4 h-4 transition-transform duration-200" data-basic-more-icon xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+            </div>
+            </section>
+
+            <!-- 6.1 省电模式 -->
+            <section id="section-power-saving" data-collapsible-section data-collapsible-default="open" class="px-4 py-4 hidden">
+                <div class="flex items-center justify-between mb-2">
+                    <h2 class="text-base font-bold text-gray-900">省电模式</h2>
+                    <button type="button" class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-gray-100 text-gray-600 hover:text-gray-900 hover:bg-gray-200 transition" data-collapsible-toggle aria-controls="section-power-saving-content" aria-expanded="false" aria-label="展开">
+                        <svg class="w-4 h-4 transition-transform duration-200" data-collapsible-icon xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                        </svg>
+                    </button>
+                </div>
+                <div id="section-power-saving-content" class="hidden" data-collapsible-content>
+                    <div class="bg-white rounded-lg shadow-sm p-4 space-y-5">
+                        <div class="flex items-center space-x-3">
+                            <span class="flex-shrink-0 bg-amber-500 text-white text-sm font-medium py-1 px-3 rounded-lg">开始省电</span>
+                            <div class="flex-1 relative py-2">
+                                <div class="slider-track" id="power-saving-start-track">
+                                    <div class="slider-progress" id="power-saving-start-progress"></div>
+                                    <div class="slider-thumb" id="power-saving-start-thumb"></div>
+                                </div>
+                            </div>
+                            <span class="text-sm font-medium text-gray-700 w-16 text-right" id="power-saving-start-value">3.0V</span>
+                        </div>
+                        <div class="flex items-center space-x-3">
+                            <span class="flex-shrink-0 bg-amber-500 text-white text-sm font-medium py-1 px-3 rounded-lg">超级省电</span>
+                            <div class="flex-1 relative py-2">
+                                <div class="slider-track" id="power-saving-super-track">
+                                    <div class="slider-progress" id="power-saving-super-progress"></div>
+                                    <div class="slider-thumb" id="power-saving-super-thumb"></div>
+                                </div>
+                            </div>
+                            <span class="text-sm font-medium text-gray-700 w-16 text-right" id="power-saving-super-value">2.6V</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 6.2 冬季调节 -->
+            <section id="section-winter-adjustment" data-collapsible-section data-collapsible-default="open" class="px-4 py-4 hidden">
+                <div class="flex items-center justify-between mb-2">
+                    <h2 class="text-base font-bold text-gray-900">冬季调节</h2>
+                    <button type="button" class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-gray-100 text-gray-600 hover:text-gray-900 hover:bg-gray-200 transition" data-collapsible-toggle aria-controls="section-winter-adjustment-content" aria-expanded="false" aria-label="展开">
+                        <svg class="w-4 h-4 transition-transform duration-200" data-collapsible-icon xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                        </svg>
+                    </button>
+                </div>
+                <div id="section-winter-adjustment-content" class="hidden" data-collapsible-content>
+                    <div class="bg-white rounded-lg shadow-sm p-4 space-y-5">
+                        <div class="flex items-center space-x-3">
+                            <span class="flex-shrink-0 bg-amber-500 text-white text-sm font-medium py-1 px-3 rounded-lg">冬季时长</span>
+                            <div class="flex-1 relative py-2">
+                                <div class="slider-track" id="winter-duration-track">
+                                    <div class="slider-progress" id="winter-duration-progress"></div>
+                                    <div class="slider-thumb" id="winter-duration-thumb"></div>
+                                </div>
+                            </div>
+                            <span class="text-sm font-medium text-gray-700 w-16 text-right" id="winter-duration-value">12.0小时</span>
+                        </div>
+                        <div class="flex items-center space-x-3">
+                            <span class="flex-shrink-0 bg-amber-500 text-white text-sm font-medium py-1 px-3 rounded-lg">冬季功率</span>
+                            <div class="flex-1 relative py-2">
+                                <div class="slider-track" id="winter-power-track">
+                                    <div class="slider-progress" id="winter-power-progress"></div>
+                                    <div class="slider-thumb" id="winter-power-thumb"></div>
+                                </div>
+                            </div>
+                            <span class="text-sm font-medium text-gray-700 w-16 text-right" id="winter-power-value">50%</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 6.1 时控 -->
+            <section id="section-time-control" data-collapsible-section class="px-4 py-4">
+                <div class="flex items-center justify-between mb-2">
+                    <h2 class="text-base font-bold text-gray-900">时控</h2>
+                    <button type="button" class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-gray-100 text-gray-600 hover:text-gray-900 hover:bg-gray-200 transition" data-collapsible-toggle aria-controls="section-time-control-content" aria-expanded="false" aria-label="展开">
+                        <svg class="w-4 h-4 transition-transform duration-200" data-collapsible-icon xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                        </svg>
+                    </button>
+                </div>
+                <div id="section-time-control-content" class="hidden" data-collapsible-content>
+                    <div class="bg-white rounded-lg shadow-sm p-4 space-y-5">
+                        <div class="flex items-center space-x-3">
+                            <span class="flex-shrink-0 bg-amber-500 text-white text-sm font-medium py-1 px-3 rounded-lg">光控延时</span>
+                            <div class="flex-1 relative py-2">
+                                <div class="slider-track" id="time-control-delay-track">
+                                    <div class="slider-progress" id="time-control-delay-progress"></div>
+                                    <div class="slider-thumb" id="time-control-delay-thumb"></div>
+                                </div>
+                            </div>
+                            <span class="text-sm font-medium text-gray-700 w-16 text-right" id="time-control-delay-value">30s</span>
+                        </div>
+                        <div class="flex items-center space-x-3">
+                            <span class="flex-shrink-0 bg-amber-500 text-white text-sm font-medium py-1 px-3 rounded-lg">光控开灯</span>
+                            <div class="flex-1 relative py-2">
+                                <div class="slider-track" id="time-control-on-voltage-track">
+                                    <div class="slider-progress" id="time-control-on-voltage-progress"></div>
+                                    <div class="slider-thumb" id="time-control-on-voltage-thumb"></div>
+                                </div>
+                            </div>
+                            <span class="text-sm font-medium text-gray-700 w-16 text-right" id="time-control-on-voltage-value">3.0V</span>
+                        </div>
+                        <div class="flex items-center space-x-3">
+                            <span class="flex-shrink-0 bg-amber-500 text-white text-sm font-medium py-1 px-3 rounded-lg">光控关灯</span>
+                            <div class="flex-1 relative py-2">
+                                <div class="slider-track" id="time-control-off-voltage-track">
+                                    <div class="slider-progress" id="time-control-off-voltage-progress"></div>
+                                    <div class="slider-thumb" id="time-control-off-voltage-thumb"></div>
+                                </div>
+                            </div>
+                            <span class="text-sm font-medium text-gray-700 w-16 text-right" id="time-control-off-voltage-value">4.0V</span>
+                        </div>
+                        <div class="flex items-center space-x-3">
+                            <span class="flex-shrink-0 bg-amber-500 text-white text-sm font-medium py-1 px-3 rounded-lg">负载电流</span>
+                            <div class="flex-1 relative py-2">
+                                <div class="slider-track" id="time-control-current-track">
+                                    <div class="slider-progress" id="time-control-current-progress"></div>
+                                    <div class="slider-thumb" id="time-control-current-thumb"></div>
+                                </div>
+                            </div>
+                            <span class="text-sm font-medium text-gray-700 w-16 text-right" id="time-control-current-value">50%</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 6.2 温度保护 -->
+            <section id="section-temperature-protection" data-collapsible-section class="px-4 py-4">
+                <div class="flex items-center justify-between mb-2">
+                    <h2 class="text-base font-bold text-gray-900">温度保护</h2>
+                    <button type="button" class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-gray-100 text-gray-600 hover:text-gray-900 hover:bg-gray-200 transition" data-collapsible-toggle aria-controls="section-temperature-protection-content" aria-expanded="false" aria-label="展开">
+                        <svg class="w-4 h-4 transition-transform duration-200" data-collapsible-icon xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                        </svg>
+                    </button>
+                </div>
+                <div id="section-temperature-protection-content" class="hidden" data-collapsible-content>
+                    <div class="bg-white rounded-lg shadow-sm p-4 space-y-5">
+                        <div class="flex items-center space-x-3">
+                        <span class="flex-shrink-0 bg-amber-500 text-white text-sm font-medium py-1 px-3 rounded-lg">充电上限</span>
+                        <div class="flex-1 relative py-2">
+                            <div class="slider-track" id="temp-charge-high-track">
+                                <div class="slider-progress" id="temp-charge-high-progress"></div>
+                                <div class="slider-thumb" id="temp-charge-high-thumb"></div>
+                            </div>
+                        </div>
+                        <span class="text-sm font-medium text-gray-700 w-16 text-right" id="temp-charge-high-value">95°C</span>
+                    </div>
+                    <div class="flex items-center space-x-3">
+                        <span class="flex-shrink-0 bg-amber-500 text-white text-sm font-medium py-1 px-3 rounded-lg">充电下限</span>
+                        <div class="flex-1 relative py-2">
+                            <div class="slider-track" id="temp-charge-low-track">
+                                <div class="slider-progress" id="temp-charge-low-progress"></div>
+                                <div class="slider-thumb" id="temp-charge-low-thumb"></div>
+                            </div>
+                        </div>
+                        <span class="text-sm font-medium text-gray-700 w-16 text-right" id="temp-charge-low-value">-10°C</span>
+                    </div>
+                    <div class="flex items-center space-x-3">
+                        <span class="flex-shrink-0 bg-amber-500 text-white text-sm font-medium py-1 px-3 rounded-lg">放电上限</span>
+                        <div class="flex-1 relative py-2">
+                            <div class="slider-track" id="temp-discharge-high-track">
+                                <div class="slider-progress" id="temp-discharge-high-progress"></div>
+                                <div class="slider-thumb" id="temp-discharge-high-thumb"></div>
+                            </div>
+                        </div>
+                        <span class="text-sm font-medium text-gray-700 w-16 text-right" id="temp-discharge-high-value">95°C</span>
+                    </div>
+                    <div class="flex items-center space-x-3">
+                        <span class="flex-shrink-0 bg-amber-500 text-white text-sm font-medium py-1 px-3 rounded-lg">放电下限</span>
+                        <div class="flex-1 relative py-2">
+                            <div class="slider-track" id="temp-discharge-low-track">
+                                <div class="slider-progress" id="temp-discharge-low-progress"></div>
+                                <div class="slider-thumb" id="temp-discharge-low-thumb"></div>
+                            </div>
+                        </div>
+                        <span class="text-sm font-medium text-gray-700 w-16 text-right" id="temp-discharge-low-value">-10°C</span>
+                    </div>
+                </div>
+            </div>
+            </section>
+
+            <!-- 7. 时段功率设置 (雷达模式 和 时控模式) -->
+            <!-- 新增ID, 用于JS控制 -->
+            <section id="section-segment-power" data-collapsible-section class="px-4 py-4">
+                <div class="flex items-center justify-between mb-2">
+                    <h2 class="text-base font-bold text-gray-900">时段功率设置</h2>
+                    <button type="button" class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-gray-100 text-gray-600 hover:text-gray-900 hover:bg-gray-200 transition" data-collapsible-toggle aria-controls="section-segment-power-content" aria-expanded="false" aria-label="展开">
+                        <svg class="w-4 h-4 transition-transform duration-200" data-collapsible-icon xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                        </svg>
+                    </button>
+                </div>
+                <div id="section-segment-power-content" class="hidden" data-collapsible-content>
+                    <div class="bg-white rounded-lg shadow-sm p-4">
+                        <!-- ... 时段功率设置内容 ... -->
+                        <!-- 时段选择 -->
+                        <div class="flex items-center mb-5">
+                        <span class="text-sm font-medium text-gray-700 mr-3">时段</span>
+                        <div class="segment-tab-wrapper">
+                            <div class="flex items-center space-x-2" id="segment-tabs">
+                                <button data-segment="1" class="segment-tab py-2 px-4 rounded-lg text-sm font-medium bg-gray-200 text-gray-700">时段 1</button>
+                                <button data-segment="2" class="segment-tab py-2 px-4 rounded-lg text-sm font-medium bg-amber-500 text-white shadow-md">时段 2</button>
+                                <button data-segment="3" class="segment-tab py-2 px-4 rounded-lg text-sm font-medium bg-gray-200 text-gray-700">时段 3</button>
+                                <button data-segment="4" class="segment-tab py-2 px-4 rounded-lg text-sm font-medium bg-gray-200 text-gray-700">时段 4</button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 时长滑块 -->
+                    <div class="mb-6">
+                        <div class="flex justify-between items-center mb-1">
+                            <span class="text-sm font-medium text-gray-700">时长</span>
+                            <span id="duration-value" class="text-sm font-semibold text-amber-500">1.5小时</span>
+                        </div>
+                        <!-- 自定义滑块 -->
+                        <div class="relative py-2">
+                            <div class="slider-track" id="duration-track">
+                                <div id="duration-progress" class="slider-progress"></div>
+                                <div id="duration-thumb" class="slider-thumb"></div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 功率滑块 -->
+                    <div class="mb-4">
+                        <div class="flex justify-between items-center mb-1">
+                            <span class="text-sm font-medium text-gray-700">功率</span>
+                            <span id="power-value" class="text-sm font-semibold text-amber-500">100%</span>
+                        </div>
+                        <!-- 自定义滑块 -->
+                        <div class="relative py-2">
+                            <div class="slider-track" id="power-track">
+                                <div id="power-progress" class="slider-progress"></div>
+                                <div id="power-thumb" class="slider-thumb"></div>
+                            </div>
+                        </div>
+                    </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 8. 感应调节 (雷达模式 和 平均模式) -->
+            <!-- 新增ID, 用于JS控制 -->
+            <section id="section-induction-adjustment" data-collapsible-section class="px-4 py-4">
+                <div class="flex items-center justify-between mb-2">
+                    <h2 class="text-base font-bold text-gray-900">感应调节</h2>
+                    <button type="button" class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-gray-100 text-gray-600 hover:text-gray-900 hover:bg-gray-200 transition" data-collapsible-toggle aria-controls="section-induction-adjustment-content" aria-expanded="false" aria-label="展开">
+                        <svg class="w-4 h-4 transition-transform duration-200" data-collapsible-icon xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                        </svg>
+                    </button>
+                </div>
+                <div id="section-induction-adjustment-content" class="hidden" data-collapsible-content>
+                    <div class="bg-white rounded-lg shadow-sm p-4 space-y-5">
+                        <!-- ... 感应调节内容 ... -->
+                        <!-- 感应时长 -->
+                        <div class="flex items-center space-x-3">
+                        <span class="flex-shrink-0 bg-amber-500 text-white text-sm font-medium py-1 px-3 rounded-lg">感应时长</span>
+                        <div class="flex-1 relative py-2">
+                            <div class="slider-track" id="induction-duration-track">
+                                <div class="slider-progress" id="induction-duration-progress"></div>
+                                <div class="slider-thumb" id="induction-duration-thumb"></div>
+                            </div>
+                        </div>
+                        <span class="text-sm font-medium text-gray-700 w-14 text-right" id="induction-duration-value">30s</span>
+                    </div>
+                    <!-- 有人功率 -->
+                    <div class="flex items-center space-x-3">
+                        <span class="flex-shrink-0 bg-amber-500 text-white text-sm font-medium py-1 px-3 rounded-lg">有人功率</span>
+                        <div class="flex-1 relative py-2">
+                            <div class="slider-track" id="presence-power-track">
+                                <div class="slider-progress" id="presence-power-progress"></div>
+                                <div class="slider-thumb" id="presence-power-thumb"></div>
+                            </div>
+                        </div>
+                        <span class="text-sm font-medium text-gray-700 w-14 text-right" id="presence-power-value">50%</span>
+                    </div>
+                    <!-- 无人功率 -->
+                    <div class="flex items-center space-x-3">
+                        <span class="flex-shrink-0 bg-amber-500 text-white text-sm font-medium py-1 px-3 rounded-lg">无人功率</span>
+                        <div class="flex-1 relative py-2">
+                            <div class="slider-track" id="absence-power-track">
+                                <div class="slider-progress" id="absence-power-progress"></div>
+                                <div class="slider-thumb" id="absence-power-thumb"></div>
+                            </div>
+                        </div>
+                        <span class="text-sm font-medium text-gray-700 w-14 text-right" id="absence-power-value">10%</span>
+                    </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 9. 晨亮时间设置 (仅 时控模式) -->
+            <!-- 新增模块，默认隐藏 -->
+            <section id="section-morning-light" data-collapsible-section class="px-4 py-4 hidden">
+                <div class="flex items-center justify-between mb-2">
+                    <h2 class="text-base font-bold text-gray-900">晨亮设置</h2>
+                    <button type="button" class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-gray-100 text-gray-600 hover:text-gray-900 hover:bg-gray-200 transition" data-collapsible-toggle aria-controls="section-morning-light-content" aria-expanded="false" aria-label="展开">
+                        <svg class="w-4 h-4 transition-transform duration-200" data-collapsible-icon xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                        </svg>
+                    </button>
+                </div>
+                <div id="section-morning-light-content" class="hidden" data-collapsible-content>
+                    <div class="bg-white rounded-lg shadow-sm p-4 space-y-5">
+                        <!-- 晨亮时间 -->
+                        <div class="flex items-center space-x-3">
+                        <span class="flex-shrink-0 bg-amber-500 text-white text-sm font-medium py-1 px-3 rounded-lg">晨亮时间</span>
+                        <div class="flex-1 relative py-2">
+                            <!-- ID 必须唯一 -->
+                            <div class="slider-track" id="morning-time-track">
+                                <div class="slider-progress" id="morning-time-progress"></div>
+                                <div class="slider-thumb" id="morning-time-thumb"></div>
+                            </div>
+                        </div>
+                        <span class="text-sm font-medium text-gray-700 w-14 text-right" id="morning-time-value">60分钟</span>
+                    </div>
+                    <!-- 晨亮功率 -->
+                    <div class="flex items-center space-x-3">
+                        <span class="flex-shrink-0 bg-amber-500 text-white text-sm font-medium py-1 px-3 rounded-lg">晨亮功率</span>
+                        <div class="flex-1 relative py-2">
+                            <!-- ID 必须唯一 -->
+                            <div class="slider-track" id="morning-power-track">
+                                <div class="slider-progress" id="morning-power-progress"></div>
+                                <div class="slider-thumb" id="morning-power-thumb"></div>
+                            </div>
+                        </div>
+                        <span class="text-sm font-medium text-gray-700 w-14 text-right" id="morning-power-value">30%</span>
+                    </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 10. 平均功率设置 (仅 平均模式) -->
+            <!-- 新增模块，默认隐藏 -->
+            <section id="section-average-power" data-collapsible-section class="px-4 py-4 hidden">
+                <div class="flex items-center justify-between mb-2">
+                    <h2 class="text-base font-bold text-gray-900">平均功率设置</h2>
+                    <button type="button" class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-gray-100 text-gray-600 hover:text-gray-900 hover:bg-gray-200 transition" data-collapsible-toggle aria-controls="section-average-power-content" aria-expanded="false" aria-label="展开">
+                        <svg class="w-4 h-4 transition-transform duration-200" data-collapsible-icon xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                        </svg>
+                    </button>
+                </div>
+                <div id="section-average-power-content" class="hidden" data-collapsible-content>
+                    <div class="bg-white rounded-lg shadow-sm p-4">
+                    <!-- 首段功率滑块 -->
+                    <div class="mb-6">
+                        <div class="flex justify-between items-center mb-1">
+                            <span class="text-sm font-medium text-gray-700">首段功率</span>
+                            <span id="first-power-value" class="text-sm font-semibold text-amber-500">80%</span>
+                        </div>
+                        <!-- 自定义滑块 -->
+                        <div class="relative py-2">
+                            <!-- ID 必须唯一 -->
+                            <div class="slider-track" id="first-power-track">
+                                <div id="first-power-progress" class="slider-progress"></div>
+                                <div id="first-power-thumb" class="slider-thumb"></div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 尾端功率滑块 -->
+                    <div class="mb-4">
+                        <div class="flex justify-between items-center mb-1">
+                            <span class="text-sm font-medium text-gray-700">尾端功率</span>
+                            <span id="end-power-value" class="text-sm font-semibold text-amber-500">20%</span>
+                        </div>
+                        <!-- 自定义滑块 -->
+                        <div class="relative py-2">
+                            <!-- ID 必须唯一 -->
+                            <div class="slider-track" id="end-power-track">
+                                <div id="end-power-progress" class="slider-progress"></div>
+                                <div id="end-power-thumb" class="slider-thumb"></div>
+                            </div>
+                        </div>
+                    </div>
+                    </div>
+                </div>
+            </section>
+
+        </main>
+
+        <!-- =================================== -->
+        <!-- 9. OTA 升级页面 (ID: ota-view)   -->
+        <!-- =================================== -->
+        <!-- 修复：重新添加被误删的 OTA 页面 HTML -->
+        <main id="ota-view" class="flex-1 overflow-y-auto pb-8 px-4 py-6 hidden">
+            
+            <!-- 9.1 信息接收框 (日志) -->
+            <section class="mb-6">
+                <h2 class="text-base font-bold text-gray-900 mb-2">升级日志</h2>
+                <!-- 我设计了一个深色的日志框，模拟控制台的感觉 -->
+                <div class="bg-gray-900 rounded-lg shadow-sm p-3 h-48 overflow-y-auto">
+                    <textarea id="ota-log" readonly class="w-full h-full bg-transparent text-sm text-green-400 font-mono border-none focus:ring-0 resize-none" placeholder="等待连接..."></textarea>
+                </div>
+            </section>
+
+            <!-- 9.2 文件选择 (三个选项卡中的两个) -->
+            <section class="mb-6">
+                <h2 class="text-base font-bold text-gray-900 mb-2">选择固件</h2>
+                <div class="space-y-4">
+                    
+                    <!-- 选项1: 从微信聊天中选择 -->
+                    <button id="select-from-wechat" class="w-full flex items-center justify-between p-4 bg-white rounded-lg shadow-sm hover:bg-gray-50 transition-colors">
+                        <div class="flex items-center space-x-3">
+                            <!-- 微信图标 -->
+                            <svg class="w-8 h-8 text-green-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10c.81 0 1.601-.103 2.358-.302l-.014.002 2.6 1.732a.5.5 0 00.756-.44V19.5a.5.5 0 01.32-.459A8.96 8.96 0 0022 12c0-5.523-4.477-10-10-10zm4.11 8.272a.5.5 0 01.44.73l-1.68 3.023c-.22.396-.7.545-1.115.34a.5.5 0 01-.15-.11l-1.31-1.002c-.11-.083-.242-.128-.376-.128s-.266.045-.376.128l-1.31 1.002a.5.5 0 01-.15.11c-.415.204-.895.056-1.115-.34L7.43 9.002a.5.5 0 01.44-.73h8.24zm-4.606 3.51a.5.5 0 01.44.73l-.84 1.51c-.22.396-.7.545-1.115.34a.5.5 0 01-.15-.11l-.655-.501a.1.1 0 010-.158l.655-.501a.5.5 0 01.15-.11c.415-.204.895-.056 1.115.34zM16 7.5a1.5 1.5 0 10-3 0 1.5 1.5 0 003 0zM11 7.5a1.5 1.5 0 10-3 0 1.5 1.5 0 003 0z" />
+                            </svg>
+                            <div>
+                                <h3 class="text-sm font-semibold text-gray-800">从微信聊天中选择</h3>
+                                <p class="text-xs text-gray-500">选择 .bin 固件文件</p>
+                            </div>
+                        </div>
+                        <svg class="w-5 h-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                        </svg>
+                    </button>
+
+                    <!-- 选项2: 从本地文件中选择 -->
+                    <label for="select-from-local" class="w-full flex items-center justify-between p-4 bg-white rounded-lg shadow-sm hover:bg-gray-50 transition-colors cursor-pointer">
+                        <div class="flex items-center space-x-3">
+                            <!-- 文件夹图标 -->
+                            <svg class="w-8 h-8 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" />
+                            </svg>
+                            <div>
+                                <h3 class="text-sm font-semibold text-gray-800">从本地文件中选择</h3>
+                                <p class="text-xs text-gray-500" id="local-file-name">未选择文件</p>
+                            </div>
+                        </div>
+                        <svg class="w-5 h-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                        </svg>
+                    </label>
+                    <input type="file" id="select-from-local" class="hidden" accept=".bin,application/octet-stream">
+                </div>
+            </section>
+
+            <!-- 9.3 发送操作 (第三个选项卡) -->
+            <section>
+                <button id="ota-send-button" class="w-full bg-amber-500 text-white font-bold py-3 px-6 rounded-lg shadow-md hover:bg-amber-600 transition-colors disabled:bg-gray-400">
+                    OTA 发送
+                </button>
+                
+                <!-- 进度条 (默认隐藏) -->
+                <div id="ota-progress-container" class="mt-4 hidden">
+                    <div class="flex justify-between text-sm font-medium text-gray-700 mb-1">
+                        <span>正在发送...</span>
+                        <span id="ota-progress-percent">0%</span>
+                    </div>
+                    <div class="w-full bg-gray-200 rounded-full h-2.5">
+                        <div id="ota-progress-bar" class="bg-amber-500 h-2.5 rounded-full"></div>
+                    </div>
+                </div>
+            </section>
+        </main>
+        
+        </div>
+
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // --- 主题切换逻辑 ---
+            const themeToggle = document.getElementById('theme-toggle');
+            const themeToggleLabel = document.getElementById('theme-toggle-label');
+            const THEME_STORAGE_KEY = 'mppt-theme-preference';
+            const prefersDarkQuery = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+
+            const getStoredTheme = () => {
+                try {
+                    const stored = localStorage.getItem(THEME_STORAGE_KEY);
+                    if (stored === 'light' || stored === 'dark') {
+                        return stored;
+                    }
+                } catch (error) {
+                    // 忽略存储错误 (无痕/禁用存储等场景)
+                }
+                return null;
+            };
+
+            const storeTheme = (theme) => {
+                try {
+                    localStorage.setItem(THEME_STORAGE_KEY, theme);
+                } catch (error) {
+                    // 同样忽略
+                }
+            };
+
+            const applyTheme = (theme) => {
+                const normalized = theme === 'dark' ? 'dark' : 'light';
+                document.body.setAttribute('data-theme', normalized);
+                if (themeToggle) {
+                    themeToggle.setAttribute('aria-pressed', normalized === 'dark');
+                }
+                if (themeToggleLabel) {
+                    themeToggleLabel.textContent = normalized === 'dark' ? '深色模式' : '浅色模式';
+                }
+            };
+
+            const storedTheme = getStoredTheme();
+            let userHasExplicitChoice = Boolean(storedTheme);
+            const initialTheme = storedTheme || (prefersDarkQuery && prefersDarkQuery.matches ? 'dark' : 'light');
+            applyTheme(initialTheme);
+
+            const syncWithSystemPreference = (event) => {
+                if (userHasExplicitChoice) return;
+                applyTheme(event.matches ? 'dark' : 'light');
+            };
+
+            if (!userHasExplicitChoice && prefersDarkQuery) {
+                if (prefersDarkQuery.addEventListener) {
+                    prefersDarkQuery.addEventListener('change', syncWithSystemPreference);
+                } else if (prefersDarkQuery.addListener) {
+                    prefersDarkQuery.addListener(syncWithSystemPreference);
+                }
+            }
+
+            if (themeToggle) {
+                themeToggle.addEventListener('click', () => {
+                    const current = document.body.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+                    const nextTheme = current === 'dark' ? 'light' : 'dark';
+                    userHasExplicitChoice = true;
+                    applyTheme(nextTheme);
+                    storeTheme(nextTheme);
+                });
+            }
+            
+            // --- 新增：实时时钟逻辑 ---
+            const clockElement = document.getElementById('real-time-clock');
+
+            function updateClock() {
+                if (!clockElement) return; // 确保元素存在
+                
+                const now = new Date();
+                const hours = now.getHours().toString().padStart(2, '0');
+                const minutes = now.getMinutes().toString().padStart(2, '0');
+                clockElement.textContent = `${hours}:${minutes}`;
+            }
+
+            updateClock(); // 立即执行一次
+            setInterval(updateClock, 1000 * 60); // 每分钟更新一次
+            // --- 实时时钟逻辑结束 ---
+            
+            // ... 
+            // (前面所有控制面板的 JS 逻辑保持不变)
+            // ...
+
+            // 模拟的时段数据
+            const segmentData = {
+                1: {
+                    duration: 2.0,
+                    durationPercent: 40,
+                    power: 80,
+                    powerPercent: 80,
+                    inductionDuration: 30,
+                    inductionDurationPercent: 8.5,
+                    presencePower: 50,
+                    presencePowerPercent: 50,
+                    absencePower: 10,
+                    absencePowerPercent: 10
+                }, // 2.0h / 5h = 40%
+                2: {
+                    duration: 1.5,
+                    durationPercent: 30,
+                    power: 100,
+                    powerPercent: 100,
+                    inductionDuration: 30,
+                    inductionDurationPercent: 8.5,
+                    presencePower: 50,
+                    presencePowerPercent: 50,
+                    absencePower: 10,
+                    absencePowerPercent: 10
+                }, // 1.5h / 5h = 30%
+                3: {
+                    duration: 1.0,
+                    durationPercent: 20,
+                    power: 50,
+                    powerPercent: 50,
+                    inductionDuration: 30,
+                    inductionDurationPercent: 8.5,
+                    presencePower: 50,
+                    presencePowerPercent: 50,
+                    absencePower: 10,
+                    absencePowerPercent: 10
+                }, // 1.0h / 5h = 20%
+                4: {
+                    duration: 0.5,
+                    durationPercent: 10,
+                    power: 30,
+                    powerPercent: 30,
+                    inductionDuration: 30,
+                    inductionDurationPercent: 8.5,
+                    presencePower: 50,
+                    presencePowerPercent: 50,
+                    absencePower: 10,
+                    absencePowerPercent: 10
+                } // 0.5h / 5h = 10%
+            };
+
+            const segmentTabs = document.querySelectorAll('.segment-tab');
+            const modeTabs = document.querySelectorAll('.mode-tab');
+            const viewTabs = document.querySelectorAll('.view-tab'); // 视图切换 (OTA/控制)
+            const deviceCards = document.querySelectorAll('[data-device-card]');
+            const swipeContainers = document.querySelectorAll('[data-swipe-container]');
+            const disconnectButtons = document.querySelectorAll('[data-disconnect-button]');
+            const deviceListView = document.getElementById('device-list-view');
+            const deviceDetailView = document.getElementById('device-detail-view');
+            const navTitle = document.getElementById('nav-title');
+            const navBackButton = document.getElementById('nav-back-button');
+            const currentModeDisplay = document.getElementById('current-mode-display');
+            const sectionSegmentPower = document.getElementById('section-segment-power');
+            const sectionInductionAdjustment = document.getElementById('section-induction-adjustment');
+            const sectionMorningLight = document.getElementById('section-morning-light');
+            const sectionAveragePower = document.getElementById('section-average-power');
+            const COLLAPSE_STORAGE_KEY = 'mppt-control-panel-collapse';
+            const collapsibleSections = document.querySelectorAll('[data-collapsible-section]');
+            
+            // UI 元素
+            const durationValue = document.getElementById('duration-value');
+            const durationProgress = document.getElementById('duration-progress');
+            const durationThumb = document.getElementById('duration-thumb');
+            
+            const powerValue = document.getElementById('power-value');
+            const powerProgress = document.getElementById('power-progress');
+            const powerThumb = document.getElementById('power-thumb');
+
+            const inductionDurationValue = document.getElementById('induction-duration-value');
+            const inductionDurationProgress = document.getElementById('induction-duration-progress');
+            const inductionDurationThumb = document.getElementById('induction-duration-thumb');
+            const presencePowerValue = document.getElementById('presence-power-value');
+            const presencePowerProgress = document.getElementById('presence-power-progress');
+            const presencePowerThumb = document.getElementById('presence-power-thumb');
+            const absencePowerValue = document.getElementById('absence-power-value');
+            const absencePowerProgress = document.getElementById('absence-power-progress');
+            const absencePowerThumb = document.getElementById('absence-power-thumb');
+
+            const getCollapseState = () => {
+                try {
+                    const stored = localStorage.getItem(COLLAPSE_STORAGE_KEY);
+                    if (!stored) return {};
+                    const parsed = JSON.parse(stored);
+                    return parsed && typeof parsed === 'object' ? parsed : {};
+                } catch (error) {
+                    return {};
+                }
+            };
+
+            const saveCollapseState = (state) => {
+                try {
+                    localStorage.setItem(COLLAPSE_STORAGE_KEY, JSON.stringify(state));
+                } catch (error) {
+                    // 忽略存储错误
+                }
+            };
+
+            const collapseState = getCollapseState();
+
+            function applySectionCollapse(section, collapsed) {
+                const content = section.querySelector('[data-collapsible-content]');
+                const toggle = section.querySelector('[data-collapsible-toggle]');
+                const icon = section.querySelector('[data-collapsible-icon]');
+
+                if (content) {
+                    content.classList.toggle('hidden', collapsed);
+                }
+                if (toggle) {
+                    toggle.setAttribute('aria-expanded', String(!collapsed));
+                    toggle.setAttribute('aria-label', collapsed ? '展开' : '折叠');
+                }
+                if (icon) {
+                    icon.classList.toggle('rotate-180', !collapsed);
+                }
+            }
+
+            collapsibleSections.forEach((section) => {
+                const key = section.getAttribute('data-collapsible-section') || section.id;
+                if (!key) return;
+
+                const stored = collapseState[key];
+                const defaultCollapsed = section.dataset.collapsibleDefault === 'open' ? false : true;
+                const initialCollapsed = typeof stored === 'boolean' ? stored : defaultCollapsed;
+                applySectionCollapse(section, initialCollapsed);
+
+                const toggle = section.querySelector('[data-collapsible-toggle]');
+                if (!toggle) return;
+                toggle.addEventListener('click', () => {
+                    const content = section.querySelector('[data-collapsible-content]');
+                    const isCollapsed = content ? content.classList.contains('hidden') : false;
+                    const nextCollapsed = !isCollapsed;
+                    applySectionCollapse(section, nextCollapsed);
+                    collapseState[key] = nextCollapsed;
+                    saveCollapseState(collapseState);
+                });
+            });
+
+            const formatInductionDuration = (value) => {
+                if (value >= 60) {
+                    const minutes = Math.floor(value / 60);
+                    const seconds = value % 60;
+                    if (seconds === 0) {
+                        return `${minutes}m`;
+                    }
+                    return `${minutes}m ${seconds}s`;
+                }
+                return `${value}s`;
+            };
+
+            const defaultActiveSegmentTab = document.querySelector('.segment-tab.bg-amber-500') || document.querySelector('.segment-tab');
+            let activeSegmentId = defaultActiveSegmentTab ? defaultActiveSegmentTab.getAttribute('data-segment') || '1' : '1';
+
+            // 激活样式类
+            const activeClasses = ['bg-amber-500', 'text-white', 'shadow-md'];
+            const inactiveClasses = ['bg-gray-200', 'text-gray-700'];
+
+            // 用于 OTA/控制面板 的激活样式
+            const activeViewClasses = ['bg-amber-500', 'text-white', 'shadow'];
+            const inactiveViewClasses = ['text-gray-700']; // 非激活的按钮在父级灰色背景上
+            const controlView = document.getElementById('control-view');
+            const otaView = document.getElementById('ota-view');
+            const modeLabelMap = {
+                radar: '雷达',
+                time: '时控',
+                average: '平均'
+            };
+            let activeDeviceCard = document.querySelector('[data-device-card][data-connected="true"]') || null;
+            let currentMode = 'radar';
+            let revealedSwipeEntry = null;
+
+            function hideSwipe(card, container = card ? card.closest('[data-swipe-container]') : null) {
+                if (!card || !container) return;
+                container.classList.remove('is-revealed');
+                card.style.transition = '';
+                card.style.transform = '';
+                if (revealedSwipeEntry && revealedSwipeEntry.card === card) {
+                    revealedSwipeEntry = null;
+                }
+            }
+
+            function revealSwipe(card, container, offset) {
+                if (!card || !container) return;
+                if (revealedSwipeEntry && revealedSwipeEntry.card !== card) {
+                    hideSwipe(revealedSwipeEntry.card, revealedSwipeEntry.container);
+                }
+                container.dataset.swipeWidth = offset;
+                container.classList.add('is-revealed');
+                card.style.transform = `translateX(${-offset}px)`;
+                revealedSwipeEntry = { card, container };
+            }
+
+            function setupSwipeHandlers(card, container) {
+                if (!card || !container) return;
+                const actionButton = container.querySelector('[data-disconnect-button]');
+                if (!actionButton) return;
+
+                let pointerActive = false;
+                let startX = 0;
+                let currentOffset = 0;
+                let startOffset = 0;
+                let swipeWidth = actionButton.offsetWidth || 120;
+
+                const clamp = (value) => Math.min(0, Math.max(-swipeWidth, value));
+
+                function onPointerDown(event) {
+                    if (card.getAttribute('data-connected') !== 'true') {
+                        hideSwipe(card, container);
+                        return;
+                    }
+                    if (event.pointerType === 'mouse' && event.button !== 0) return;
+                    pointerActive = true;
+                    swipeWidth = actionButton.offsetWidth || 120;
+                    startX = event.clientX;
+                    startOffset = container.classList.contains('is-revealed') ? -swipeWidth : 0;
+                    currentOffset = startOffset;
+                    if (card.setPointerCapture && event.pointerId !== undefined) {
+                        try {
+                            card.setPointerCapture(event.pointerId);
+                        } catch (err) {}
+                    }
+                    card.dataset.swipePreventClick = 'false';
+                }
+
+                function onPointerMove(event) {
+                    if (!pointerActive) return;
+                    const delta = event.clientX - startX;
+                    const nextOffset = clamp(startOffset + delta);
+                    if (Math.abs(delta) > 4) {
+                        card.dataset.swipePreventClick = 'true';
+                    }
+                    card.style.transition = 'none';
+                    currentOffset = nextOffset;
+                    card.style.transform = `translateX(${nextOffset}px)`;
+                }
+
+                function onPointerEnd(event) {
+                    if (!pointerActive) return;
+                    pointerActive = false;
+                    if (card.releasePointerCapture && event.pointerId !== undefined) {
+                        try {
+                            card.releasePointerCapture(event.pointerId);
+                        } catch (err) {}
+                    }
+                    card.style.transition = '';
+                    const shouldReveal = Math.abs(currentOffset) > swipeWidth * 0.4;
+                    if (shouldReveal) {
+                        revealSwipe(card, container, swipeWidth);
+                    } else {
+                        hideSwipe(card, container);
+                    }
+                    requestAnimationFrame(() => {
+                        delete card.dataset.swipePreventClick;
+                    });
+                }
+
+                card.addEventListener('pointerdown', onPointerDown);
+                card.addEventListener('pointermove', onPointerMove);
+                card.addEventListener('pointerup', onPointerEnd);
+                card.addEventListener('pointercancel', onPointerEnd);
+            }
+
+            function setActiveView(targetView = 'control') {
+                if (!controlView || !otaView) return;
+
+                const normalizedView = targetView === 'ota' ? 'ota' : 'control';
+
+                viewTabs.forEach(tab => {
+                    const tabView = tab.getAttribute('data-view');
+                    if (tabView === normalizedView) {
+                        tab.classList.add(...activeViewClasses);
+                        tab.classList.remove(...inactiveViewClasses);
+                    } else {
+                        tab.classList.remove(...activeViewClasses);
+                        tab.classList.add(...inactiveViewClasses);
+                    }
+                });
+
+                if (normalizedView === 'ota') {
+                    controlView.classList.add('hidden');
+                    otaView.classList.remove('hidden');
+                } else {
+                    otaView.classList.add('hidden');
+                    controlView.classList.remove('hidden');
+                }
+            }
+
+            function normalizeMode(mode) {
+                return modeLabelMap[mode] ? mode : 'radar';
+            }
+
+            function updateModeSections(mode) {
+                const sections = [
+                    sectionSegmentPower,
+                    sectionInductionAdjustment,
+                    sectionMorningLight,
+                    sectionAveragePower
+                ];
+
+                sections.forEach(section => section && section.classList.add('hidden'));
+
+                if (mode === 'radar') {
+                    sectionSegmentPower && sectionSegmentPower.classList.remove('hidden');
+                    sectionInductionAdjustment && sectionInductionAdjustment.classList.remove('hidden');
+                } else if (mode === 'time') {
+                    sectionSegmentPower && sectionSegmentPower.classList.remove('hidden');
+                    sectionMorningLight && sectionMorningLight.classList.remove('hidden');
+                } else if (mode === 'average') {
+                    sectionInductionAdjustment && sectionInductionAdjustment.classList.remove('hidden');
+                    sectionAveragePower && sectionAveragePower.classList.remove('hidden');
+                }
+            }
+
+            function setActiveMode(mode, options = {}) {
+                const { syncCard = true } = options;
+                const normalizedMode = normalizeMode(mode);
+            // --- 模式切换按钮逻辑 ---
+                modeTabs.forEach(tab => {
+                    const tabMode = tab.getAttribute('data-mode');
+                    if (tabMode === normalizedMode) {
+                        tab.classList.add(...activeClasses);
+                        tab.classList.remove(...inactiveClasses);
+                    } else {
+                        tab.classList.remove(...activeClasses);
+                        tab.classList.add(...inactiveClasses);
+                    }
+                });
+
+                updateModeSections(normalizedMode);
+
+                if (currentModeDisplay) {
+                    currentModeDisplay.textContent = modeLabelMap[normalizedMode];
+                }
+
+                currentMode = normalizedMode;
+
+                if (syncCard && activeDeviceCard) {
+                    activeDeviceCard.setAttribute('data-mode', normalizedMode);
+                    const modeField = activeDeviceCard.querySelector('[data-mode-field]');
+                    if (modeField) {
+                        modeField.textContent = modeLabelMap[normalizedMode];
+                    }
+                }
+            }
+
+            // 初始化 OTA/控制面板 视图与标签交互
+            if (activeDeviceCard) {
+                const initialMode = activeDeviceCard.getAttribute('data-mode') || currentMode;
+                setActiveMode(initialMode, { syncCard: false });
+            } else {
+                setActiveMode(currentMode, { syncCard: false });
+            }
+
+            setActiveView('control');
+            viewTabs.forEach(tab => {
+                tab.addEventListener('click', function() {
+                    const view = this.getAttribute('data-view');
+                    setActiveView(view);
+                });
+            });
+
+            // 设备列表 / 详情切换
+            function showDeviceListView() {
+                if (!deviceListView || !deviceDetailView) return;
+                deviceDetailView.classList.add('hidden');
+                deviceListView.classList.remove('hidden');
+                if (navTitle) {
+                    navTitle.textContent = '已连接设备';
+                }
+            }
+
+            function showDeviceDetailView(labelText = '') {
+                if (!deviceListView || !deviceDetailView) return;
+                const safeLabel = labelText || 'MPPT-设备';
+                if (navTitle) {
+                    navTitle.textContent = safeLabel;
+                }
+                deviceListView.classList.add('hidden');
+                deviceDetailView.classList.remove('hidden');
+                setActiveView('control');
+            }
+
+            function connectDevice(card) {
+                if (!card) return;
+
+                const status = card.querySelector('[data-connection-status]');
+                const hint = card.querySelector('[data-connection-hint]');
+                const detailGrid = card.querySelector('[data-connection-details]');
+                const badge = card.querySelector('[data-connection-badge]');
+                const badgeText = card.querySelector('[data-connection-badge-text]');
+                const badgeIcon = card.querySelector('[data-connection-icon]');
+                const badgeSignal = card.querySelector('[data-connection-signal]');
+                const swipeContainer = card.closest('[data-swipe-container]');
+                const disconnectButton = swipeContainer ? swipeContainer.querySelector('[data-disconnect-button]') : null;
+                const targetLabel = card.getAttribute('data-connected-label') || 'MPPT-设备(已连接)';
+                const targetSignal = card.getAttribute('data-connected-signal') || '+50dB';
+
+                card.setAttribute('data-connected', 'true');
+                card.setAttribute('data-device-label', targetLabel);
+
+                if (status) {
+                    status.textContent = '(已连接)';
+                    status.classList.remove('text-emerald-600');
+                    status.classList.add('text-amber-600');
+                }
+
+                if (badge) {
+                    badge.className = 'inline-flex items-center gap-1 text-sm font-semibold text-green-600';
+                }
+
+                if (badgeSignal) {
+                    badgeSignal.textContent = targetSignal;
+                    badgeSignal.classList.remove('hidden');
+                }
+
+                if (badgeText) {
+                    badgeText.classList.add('hidden');
+                }
+
+                if (badgeIcon) {
+                    badgeIcon.classList.add('hidden');
+                }
+
+                if (hint) {
+                    hint.classList.add('hidden');
+                }
+
+                if (detailGrid) {
+                    detailGrid.classList.remove('hidden');
+                }
+
+                card.classList.remove('border-amber-300', 'border-dashed');
+                card.classList.add('border-gray-100', 'shadow-sm');
+
+                if (disconnectButton) {
+                    disconnectButton.disabled = false;
+                }
+            }
+
+            function disconnectDevice(card) {
+                if (!card) return;
+
+                const status = card.querySelector('[data-connection-status]');
+                const hint = card.querySelector('[data-connection-hint]');
+                const detailGrid = card.querySelector('[data-connection-details]');
+                const badge = card.querySelector('[data-connection-badge]');
+                const badgeText = card.querySelector('[data-connection-badge-text]');
+                const badgeIcon = card.querySelector('[data-connection-icon]');
+                const badgeSignal = card.querySelector('[data-connection-signal]');
+                const swipeContainer = card.closest('[data-swipe-container]');
+                const disconnectButton = swipeContainer ? swipeContainer.querySelector('[data-disconnect-button]') : null;
+                const targetLabel = card.getAttribute('data-disconnected-label') || 'MPPT-设备(可连接)';
+
+                card.setAttribute('data-connected', 'false');
+                card.setAttribute('data-device-label', targetLabel);
+
+                if (status) {
+                    status.textContent = '(可连接)';
+                    status.classList.add('text-amber-600');
+                }
+
+                if (badge) {
+                    badge.className = 'inline-flex items-center gap-1 text-sm font-semibold text-amber-600';
+                }
+
+                if (badgeIcon) {
+                    badgeIcon.classList.remove('hidden');
+                }
+
+                if (badgeText) {
+                    badgeText.textContent = '可连接';
+                    badgeText.classList.remove('hidden');
+                }
+
+                if (badgeSignal) {
+                    badgeSignal.classList.add('hidden');
+                }
+
+                if (hint) {
+                    hint.classList.remove('hidden');
+                }
+
+                if (detailGrid) {
+                    detailGrid.classList.add('hidden');
+                }
+
+                card.classList.remove('shadow-sm', 'border-gray-100');
+                card.classList.add('border-dashed', 'border-amber-300');
+
+                if (disconnectButton) {
+                    disconnectButton.disabled = true;
+                }
+
+                if (activeDeviceCard === card) {
+                    activeDeviceCard = null;
+                }
+
+                hideSwipe(card, swipeContainer);
+            }
+
+            swipeContainers.forEach(container => {
+                const card = container.querySelector('[data-device-card]');
+                if (card) {
+                    setupSwipeHandlers(card, container);
+                }
+            });
+
+            disconnectButtons.forEach(button => {
+                const container = button.closest('[data-swipe-container]');
+                const card = container ? container.querySelector('[data-device-card]') : null;
+                if (card && card.getAttribute('data-connected') !== 'true') {
+                    button.disabled = true;
+                }
+
+                button.addEventListener('click', (event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    if (!card) return;
+                    if (card.getAttribute('data-connected') === 'true') {
+                        disconnectDevice(card);
+                    }
+                    hideSwipe(card, container);
+                });
+            });
+
+            document.addEventListener('pointerdown', (event) => {
+                if (revealedSwipeEntry && !revealedSwipeEntry.container.contains(event.target)) {
+                    hideSwipe(revealedSwipeEntry.card, revealedSwipeEntry.container);
+                }
+            });
+
+            deviceCards.forEach(card => {
+                card.addEventListener('click', (event) => {
+                    const swipeContainer = card.closest('[data-swipe-container]');
+                    if (card.dataset.swipePreventClick === 'true') {
+                        event.preventDefault();
+                        return;
+                    }
+
+                    if (swipeContainer && swipeContainer.classList.contains('is-revealed')) {
+                        event.preventDefault();
+                        hideSwipe(card, swipeContainer);
+                        return;
+                    }
+
+                    const isConnected = card.getAttribute('data-connected') === 'true';
+                    const isConnectable = card.hasAttribute('data-connectable');
+
+                    if (isConnectable && !isConnected) {
+                        connectDevice(card);
+                        if (swipeContainer) {
+                            const disconnectButton = swipeContainer.querySelector('[data-disconnect-button]');
+                            if (disconnectButton) {
+                                disconnectButton.disabled = false;
+                            }
+                        }
+                        return;
+                    }
+
+                    if (isConnected) {
+                        activeDeviceCard = card;
+                        const cardMode = card.getAttribute('data-mode') || currentMode;
+                        setActiveMode(cardMode, { syncCard: false });
+                        const label = card.getAttribute('data-device-label') || card.textContent.trim();
+                        showDeviceDetailView(label);
+                    }
+                });
+            });
+
+            if (navBackButton) {
+                navBackButton.addEventListener('click', showDeviceListView);
+                navBackButton.addEventListener('keydown', (event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        showDeviceListView();
+                    }
+                });
+            }
+
+            function updateInductionControls(segmentId) {
+                const data = segmentData[segmentId];
+
+                if (
+                    !data ||
+                    !inductionDurationValue ||
+                    !inductionDurationProgress ||
+                    !inductionDurationThumb ||
+                    !presencePowerValue ||
+                    !presencePowerProgress ||
+                    !presencePowerThumb ||
+                    !absencePowerValue ||
+                    !absencePowerProgress ||
+                    !absencePowerThumb
+                ) {
+                    return;
+                }
+
+                const inductionDurationValueNum = Number.isFinite(data.inductionDuration) ? data.inductionDuration : 0;
+                const inductionDurationPercent = Number.isFinite(data.inductionDurationPercent) ? data.inductionDurationPercent : 0;
+                const presenceValue = Number.isFinite(data.presencePower) ? data.presencePower : 0;
+                const presencePercent = Number.isFinite(data.presencePowerPercent) ? data.presencePowerPercent : 0;
+                const absenceValue = Number.isFinite(data.absencePower) ? data.absencePower : 0;
+                const absencePercent = Number.isFinite(data.absencePowerPercent) ? data.absencePowerPercent : 0;
+
+                inductionDurationValue.textContent = formatInductionDuration(inductionDurationValueNum);
+                inductionDurationProgress.style.width = `${inductionDurationPercent}%`;
+                inductionDurationThumb.style.left = `${inductionDurationPercent}%`;
+
+                presencePowerValue.textContent = `${presenceValue}%`;
+                presencePowerProgress.style.width = `${presencePercent}%`;
+                presencePowerThumb.style.left = `${presencePercent}%`;
+
+                absencePowerValue.textContent = `${absenceValue}%`;
+                absencePowerProgress.style.width = `${absencePercent}%`;
+                absencePowerThumb.style.left = `${absencePercent}%`;
+            }
+
+            // 更新面板显示的辅助函数
+            function updateControls(segmentId) {
+                const data = segmentData[segmentId];
+
+                if (
+                    !data ||
+                    !durationValue ||
+                    !durationProgress ||
+                    !durationThumb ||
+                    !powerValue ||
+                    !powerProgress ||
+                    !powerThumb
+                ) {
+                    return;
+                }
+
+                // 同步时长显示
+                durationValue.textContent = `${data.duration.toFixed(1)}小时`;
+                durationProgress.style.width = `${data.durationPercent}%`;
+                durationThumb.style.left = `${data.durationPercent}%`;
+
+                // 同步功率显示
+                powerValue.textContent = `${data.power}%`;
+                powerProgress.style.width = `${data.powerPercent}%`;
+                powerThumb.style.left = `${data.powerPercent}%`;
+
+                updateInductionControls(segmentId);
+            }
+
+            // 时段标签点击事件
+            segmentTabs.forEach(tab => {
+                tab.addEventListener('click', function() {
+                    // 1. 清除所有标签的激活样式
+                    segmentTabs.forEach(t => {
+                        t.classList.remove(...activeClasses);
+                        t.classList.add(...inactiveClasses);
+                    });
+
+                    // 2. 为当前标签设置激活样式
+                    this.classList.add(...activeClasses);
+                    this.classList.remove(...inactiveClasses);
+
+                    // 3. 切换到对应数据并刷新控件
+                    const segmentId = this.getAttribute('data-segment');
+                    if (!segmentId) return;
+                    activeSegmentId = segmentId;
+                    updateControls(segmentId);
+                });
+            });
+
+            if (segmentData[activeSegmentId]) {
+                updateControls(activeSegmentId);
+            }
+
+            // --- 模式切换按钮逻辑 ---
+            modeTabs.forEach(tab => {
+                tab.addEventListener('click', function() {
+                    const mode = this.getAttribute('data-mode');
+                    setActiveMode(mode);
+                });
+            });
+
+            // --- 滑块拖动逻辑 ---
+            /**
+             * Make a custom slider draggable.
+             * @param {HTMLElement} trackEl - Slider track element
+             * @param {HTMLElement} progressEl - Progress bar element
+             * @param {HTMLElement} thumbEl - Thumb element
+             * @param {HTMLElement} valueEl - Value label element
+             * @param {object} options - Config { min, max, unit, step, onChange }
+             */
+            function makeSliderDraggable(trackEl, progressEl, thumbEl, valueEl, options = {}) {
+                if (!trackEl || !progressEl || !thumbEl || !valueEl) return;
+
+                const {
+                    min = 0,
+                    max = 100,
+                    unit = '',
+                    step,
+                    precision,
+                    formatValue,
+                    onChange
+                } = options;
+                let isDragging = false;
+
+                const resolveValue = (value, fallback) => {
+                    const resolved = typeof value === 'function' ? Number(value()) : value;
+                    return Number.isFinite(resolved) ? resolved : fallback;
+                };
+
+                function updateSlider(clientX) {
+                    const rect = trackEl.getBoundingClientRect();
+                    let percent = (clientX - rect.left) / rect.width;
+                    percent = Math.max(0, Math.min(1, percent));
+
+                    const minValue = resolveValue(min, 0);
+                    const maxValue = resolveValue(max, 100);
+                    const range = maxValue - minValue;
+                    if (range <= 0) return;
+
+                    let value = minValue + range * percent;
+                    let displayValue;
+
+                    if (unit === '%') {
+                        value = Math.round(value / 5) * 5; // 5% 步长
+                    } else if (unit === '小时') {
+                        value = Math.round(value * 2) / 2; // 0.5 小时步长
+                    } else if (typeof step === 'number' && step > 0) {
+                        value = Math.round(value / step) * step;
+                    } else {
+                        value = Math.round(value);
+                    }
+
+                    if (typeof precision === 'number') {
+                        value = Number(value.toFixed(precision));
+                    }
+
+                    value = Math.min(maxValue, Math.max(minValue, value));
+
+                    if (typeof formatValue === 'function') {
+                        displayValue = formatValue(value, { min: minValue, max: maxValue, unit });
+                    } else if (unit === '%') {
+                        displayValue = `${value}%`;
+                    } else if (unit === '小时') {
+                        displayValue = `${value.toFixed(1)}${unit}`;
+                    } else if (typeof precision === 'number') {
+                        displayValue = `${value.toFixed(precision)}${unit}`;
+                    } else {
+                        displayValue = `${value}${unit}`;
+                    }
+
+                    valueEl.textContent = displayValue;
+
+                    const steppedPercent = range > 0 ? ((value - minValue) / range) * 100 : 0;
+                    progressEl.style.width = `${steppedPercent}%`;
+                    thumbEl.style.left = `${steppedPercent}%`;
+
+                    if (typeof onChange === 'function') {
+                        onChange({ value, percent: steppedPercent });
+                    }
+                }
+
+                function startDrag(event) {
+                    event.preventDefault(); // 阻止选中文本
+                    isDragging = true;
+                    const clientX = event.clientX || (event.touches && event.touches[0].clientX);
+                    updateSlider(clientX);
+
+                    document.addEventListener('mousemove', onDrag);
+                    document.addEventListener('touchmove', onDrag);
+                    document.addEventListener('mouseup', endDrag);
+                    document.addEventListener('touchend', endDrag);
+                }
+
+                function onDrag(event) {
+                    if (!isDragging) return;
+                    event.preventDefault();
+                    const clientX = event.clientX || (event.touches && event.touches[0].clientX);
+                    updateSlider(clientX);
+                }
+
+                function endDrag() {
+                    isDragging = false;
+                    document.removeEventListener('mousemove', onDrag);
+                    document.removeEventListener('touchmove', onDrag);
+                    document.removeEventListener('mouseup', endDrag);
+                    document.removeEventListener('touchend', endDrag);
+                }
+
+                trackEl.addEventListener('mousedown', startDrag);
+                trackEl.addEventListener('touchstart', startDrag);
+            }
+
+            // 初始化所有滑块
+
+            // 1. 时段功率 - 时长
+            makeSliderDraggable(
+                document.getElementById('duration-track'),
+                document.getElementById('duration-progress'),
+                document.getElementById('duration-thumb'),
+                document.getElementById('duration-value'),
+                {
+                    min: 0,
+                    max: 5,
+                    unit: '小时',
+                    onChange: ({ value, percent }) => {
+                        const current = segmentData[activeSegmentId];
+                        if (!current) return;
+                        current.duration = value;
+                        current.durationPercent = percent;
+                    }
+                } // 最大 5 小时
+            );
+
+            // 2. 时段功率 - 功率
+            makeSliderDraggable(
+                document.getElementById('power-track'),
+                document.getElementById('power-progress'),
+                document.getElementById('power-thumb'),
+                document.getElementById('power-value'),
+                {
+                    min: 0,
+                    max: 100,
+                    unit: '%',
+                    onChange: ({ value, percent }) => {
+                        const current = segmentData[activeSegmentId];
+                        if (!current) return;
+                        current.power = value;
+                        current.powerPercent = percent;
+                    }
+                }
+            );
+
+            // 3. 感应调节 - 感应时长
+            makeSliderDraggable(
+                document.getElementById('induction-duration-track'),
+                document.getElementById('induction-duration-progress'),
+                document.getElementById('induction-duration-thumb'),
+                document.getElementById('induction-duration-value'),
+                {
+                    min: 5,
+                    max: 300,
+                    unit: 's',
+                    step: 1,
+                    formatValue: (value) => formatInductionDuration(value),
+                    onChange: ({ value, percent }) => {
+                        const current = segmentData[activeSegmentId];
+                        if (!current) return;
+                        current.inductionDuration = value;
+                        current.inductionDurationPercent = percent;
+                    }
+                }
+            );
+
+            // 4. 感应调节 - 有人功率
+            makeSliderDraggable(
+                document.getElementById('presence-power-track'),
+                document.getElementById('presence-power-progress'),
+                document.getElementById('presence-power-thumb'),
+                document.getElementById('presence-power-value'),
+                {
+                    min: 0,
+                    max: 100,
+                    unit: '%',
+                    onChange: ({ value, percent }) => {
+                        const current = segmentData[activeSegmentId];
+                        if (!current) return;
+                        current.presencePower = value;
+                        current.presencePowerPercent = percent;
+                    }
+                }
+            );
+
+            // 5. 感应调节 - 无人功率
+            makeSliderDraggable(
+                document.getElementById('absence-power-track'),
+                document.getElementById('absence-power-progress'),
+                document.getElementById('absence-power-thumb'),
+                document.getElementById('absence-power-value'),
+                {
+                    min: 0,
+                    max: 100,
+                    unit: '%',
+                    onChange: ({ value, percent }) => {
+                        const current = segmentData[activeSegmentId];
+                        if (!current) return;
+                        current.absencePower = value;
+                        current.absencePowerPercent = percent;
+                    }
+                }
+            );
+
+            // --- 晨亮设置 ---
+
+            // 6. 晨亮设置 - 晨亮时间 (30 分钟步进)
+            makeSliderDraggable(
+                document.getElementById('morning-time-track'),
+                document.getElementById('morning-time-progress'),
+                document.getElementById('morning-time-thumb'),
+                document.getElementById('morning-time-value'),
+                { min: 0, max: 300, unit: '分钟', step: 30 } // 0-300 分钟, 30 分钟步进
+            );
+
+            // 7. 晨亮设置 - 晨亮功率
+            makeSliderDraggable(
+                document.getElementById('morning-power-track'),
+                document.getElementById('morning-power-progress'),
+                document.getElementById('morning-power-thumb'),
+                document.getElementById('morning-power-value'),
+                { min: 0, max: 100, unit: '%' }
+            );
+
+            // 8. 平均功率 - 首段功率
+            makeSliderDraggable(
+                document.getElementById('first-power-track'),
+                document.getElementById('first-power-progress'),
+                document.getElementById('first-power-thumb'),
+                document.getElementById('first-power-value'),
+                { min: 0, max: 100, unit: '%' }
+            );
+
+            // 9. 平均功率 - 尾段功率
+            makeSliderDraggable(
+                document.getElementById('end-power-track'),
+                document.getElementById('end-power-progress'),
+                document.getElementById('end-power-thumb'),
+                document.getElementById('end-power-value'),
+                { min: 0, max: 100, unit: '%' }
+            );
+
+            // --- 温度保护 ---
+            makeSliderDraggable(
+                document.getElementById('temp-charge-high-track'),
+                document.getElementById('temp-charge-high-progress'),
+                document.getElementById('temp-charge-high-thumb'),
+                document.getElementById('temp-charge-high-value'),
+                { min: 80, max: 110, unit: '°C', step: 1 }
+            );
+
+            makeSliderDraggable(
+                document.getElementById('temp-charge-low-track'),
+                document.getElementById('temp-charge-low-progress'),
+                document.getElementById('temp-charge-low-thumb'),
+                document.getElementById('temp-charge-low-value'),
+                { min: -20, max: 0, unit: '°C', step: 1 }
+            );
+
+            makeSliderDraggable(
+                document.getElementById('temp-discharge-high-track'),
+                document.getElementById('temp-discharge-high-progress'),
+                document.getElementById('temp-discharge-high-thumb'),
+                document.getElementById('temp-discharge-high-value'),
+                { min: 80, max: 110, unit: '°C', step: 1 }
+            );
+
+            makeSliderDraggable(
+                document.getElementById('temp-discharge-low-track'),
+                document.getElementById('temp-discharge-low-progress'),
+                document.getElementById('temp-discharge-low-thumb'),
+                document.getElementById('temp-discharge-low-value'),
+                { min: -20, max: 0, unit: '°C', step: 1 }
+            );
+
+            // --- 省电模式 ---
+            const powerSavingStartValue = document.getElementById('power-saving-start-value');
+            const powerSavingSuperValue = document.getElementById('power-saving-super-value');
+            const powerSavingSuperProgress = document.getElementById('power-saving-super-progress');
+            const powerSavingSuperThumb = document.getElementById('power-saving-super-thumb');
+            const powerSavingState = {
+                start: powerSavingStartValue ? Number(powerSavingStartValue.textContent.replace('V', '').trim()) : 3.0,
+                super: powerSavingSuperValue ? Number(powerSavingSuperValue.textContent.replace('V', '').trim()) : 2.6
+            };
+            if (!Number.isFinite(powerSavingState.start)) powerSavingState.start = 3.0;
+            if (!Number.isFinite(powerSavingState.super)) powerSavingState.super = 2.6;
+            const powerSavingSuperMin = 2.4;
+
+            function updatePowerSavingSuperDisplay() {
+                if (!powerSavingSuperValue || !powerSavingSuperProgress || !powerSavingSuperThumb) return;
+                const maxValue = powerSavingState.start;
+                if (powerSavingState.super < powerSavingSuperMin) {
+                    powerSavingState.super = powerSavingSuperMin;
+                }
+                if (powerSavingState.super > maxValue) {
+                    powerSavingState.super = maxValue;
+                }
+                powerSavingSuperValue.textContent = `${powerSavingState.super.toFixed(1)}V`;
+                const percent = maxValue > powerSavingSuperMin
+                    ? ((powerSavingState.super - powerSavingSuperMin) / (maxValue - powerSavingSuperMin)) * 100
+                    : 0;
+                powerSavingSuperProgress.style.width = `${percent}%`;
+                powerSavingSuperThumb.style.left = `${percent}%`;
+            }
+
+            makeSliderDraggable(
+                document.getElementById('power-saving-start-track'),
+                document.getElementById('power-saving-start-progress'),
+                document.getElementById('power-saving-start-thumb'),
+                powerSavingStartValue,
+                {
+                    min: 2.6,
+                    max: 3.6,
+                    unit: 'V',
+                    step: 0.1,
+                    precision: 1,
+                    onChange: ({ value }) => {
+                        powerSavingState.start = value;
+                        updatePowerSavingSuperDisplay();
+                    }
+                }
+            );
+
+            makeSliderDraggable(
+                document.getElementById('power-saving-super-track'),
+                document.getElementById('power-saving-super-progress'),
+                document.getElementById('power-saving-super-thumb'),
+                powerSavingSuperValue,
+                {
+                    min: powerSavingSuperMin,
+                    max: () => powerSavingState.start,
+                    unit: 'V',
+                    step: 0.1,
+                    precision: 1,
+                    onChange: ({ value }) => {
+                        powerSavingState.super = value;
+                    }
+                }
+            );
+
+            updatePowerSavingSuperDisplay();
+
+            // --- 冬季调节 ---
+            makeSliderDraggable(
+                document.getElementById('winter-duration-track'),
+                document.getElementById('winter-duration-progress'),
+                document.getElementById('winter-duration-thumb'),
+                document.getElementById('winter-duration-value'),
+                { min: 8, max: 18, unit: '小时' }
+            );
+
+            makeSliderDraggable(
+                document.getElementById('winter-power-track'),
+                document.getElementById('winter-power-progress'),
+                document.getElementById('winter-power-thumb'),
+                document.getElementById('winter-power-value'),
+                { min: 0, max: 100, unit: '%' }
+            );
+
+            // --- 时控 ---
+            makeSliderDraggable(
+                document.getElementById('time-control-delay-track'),
+                document.getElementById('time-control-delay-progress'),
+                document.getElementById('time-control-delay-thumb'),
+                document.getElementById('time-control-delay-value'),
+                { min: 1, max: 60, unit: 's', step: 1 }
+            );
+
+            const timeControlOnValue = document.getElementById('time-control-on-voltage-value');
+            const timeControlOffValue = document.getElementById('time-control-off-voltage-value');
+            const timeControlOnProgress = document.getElementById('time-control-on-voltage-progress');
+            const timeControlOnThumb = document.getElementById('time-control-on-voltage-thumb');
+            const timeControlOffProgress = document.getElementById('time-control-off-voltage-progress');
+            const timeControlOffThumb = document.getElementById('time-control-off-voltage-thumb');
+            const timeControlVoltageMin = 1;
+            const timeControlVoltageMax = 6;
+            const timeControlVoltageStep = 0.1;
+
+            const parseTimeControlVoltage = (el, fallback) => {
+                if (!el) return fallback;
+                const raw = Number(el.textContent.replace('V', '').trim());
+                return Number.isFinite(raw) ? raw : fallback;
+            };
+
+            const timeControlVoltageState = {
+                on: parseTimeControlVoltage(timeControlOnValue, 3.0),
+                off: parseTimeControlVoltage(timeControlOffValue, 4.0)
+            };
+
+            function clampTimeControlState() {
+                timeControlVoltageState.off = Math.min(timeControlVoltageMax, Math.max(timeControlVoltageMin, timeControlVoltageState.off));
+                timeControlVoltageState.on = Math.min(timeControlVoltageState.off, Math.max(timeControlVoltageMin, timeControlVoltageState.on));
+                timeControlVoltageState.on = Number(timeControlVoltageState.on.toFixed(1));
+                timeControlVoltageState.off = Number(timeControlVoltageState.off.toFixed(1));
+            }
+
+            function updateTimeControlOnDisplay() {
+                if (!timeControlOnValue || !timeControlOnProgress || !timeControlOnThumb) return;
+                const maxValue = timeControlVoltageState.off;
+                const range = maxValue - timeControlVoltageMin;
+                const percent = range > 0
+                    ? ((timeControlVoltageState.on - timeControlVoltageMin) / range) * 100
+                    : 0;
+
+                timeControlOnValue.textContent = `${timeControlVoltageState.on.toFixed(1)}V`;
+                timeControlOnProgress.style.width = `${percent}%`;
+                timeControlOnThumb.style.left = `${percent}%`;
+            }
+
+            function updateTimeControlOffDisplay() {
+                if (!timeControlOffValue || !timeControlOffProgress || !timeControlOffThumb) return;
+                const range = timeControlVoltageMax - timeControlVoltageMin;
+                const percent = range > 0
+                    ? ((timeControlVoltageState.off - timeControlVoltageMin) / range) * 100
+                    : 0;
+
+                timeControlOffValue.textContent = `${timeControlVoltageState.off.toFixed(1)}V`;
+                timeControlOffProgress.style.width = `${percent}%`;
+                timeControlOffThumb.style.left = `${percent}%`;
+            }
+
+            clampTimeControlState();
+            updateTimeControlOffDisplay();
+            updateTimeControlOnDisplay();
+
+            makeSliderDraggable(
+                document.getElementById('time-control-on-voltage-track'),
+                timeControlOnProgress,
+                timeControlOnThumb,
+                timeControlOnValue,
+                {
+                    min: timeControlVoltageMin,
+                    max: () => timeControlVoltageState.off,
+                    unit: 'V',
+                    step: timeControlVoltageStep,
+                    precision: 1,
+                    onChange: ({ value }) => {
+                        timeControlVoltageState.on = value;
+                        clampTimeControlState();
+                        updateTimeControlOnDisplay();
+                    }
+                }
+            );
+
+            makeSliderDraggable(
+                document.getElementById('time-control-off-voltage-track'),
+                timeControlOffProgress,
+                timeControlOffThumb,
+                timeControlOffValue,
+                {
+                    min: timeControlVoltageMin,
+                    max: timeControlVoltageMax,
+                    unit: 'V',
+                    step: timeControlVoltageStep,
+                    precision: 1,
+                    onChange: ({ value }) => {
+                        timeControlVoltageState.off = value;
+                        clampTimeControlState();
+                        updateTimeControlOffDisplay();
+                        updateTimeControlOnDisplay();
+                    }
+                }
+            );
+
+            makeSliderDraggable(
+                document.getElementById('time-control-current-track'),
+                document.getElementById('time-control-current-progress'),
+                document.getElementById('time-control-current-thumb'),
+                document.getElementById('time-control-current-value'),
+                { min: 1, max: 100, unit: '%' }
+            );
+
+            // --- 基础设置点击切换 ---
+            /**
+             * 为设置按钮添加循环切换功能
+             * @param {string} baseId - 基础 ID (例如 'setting-battery-type')
+             * @param {string[]} optionsArray - 选项数组
+             */
+            function setupSettingCycler(baseId, optionsArray) {
+                const prevButton = document.getElementById(`${baseId}-prev`);
+                const nextButton = document.getElementById(`${baseId}-next`);
+                const valueSpan = document.getElementById(baseId);
+
+                if (!prevButton || !nextButton || !valueSpan) return;
+
+                let currentIndex = optionsArray.indexOf(valueSpan.textContent.trim());
+                if (currentIndex === -1) {
+                    currentIndex = 0; // 如果未找到则默认第一个选项
+                    valueSpan.textContent = optionsArray[currentIndex];
+                }
+
+                // “下一个” 按钮
+                nextButton.addEventListener('click', () => {
+                    currentIndex = (currentIndex + 1) % optionsArray.length;
+                    valueSpan.textContent = optionsArray[currentIndex];
+                });
+
+                // “上一个” 按钮
+                prevButton.addEventListener('click', () => {
+                    currentIndex = (currentIndex - 1 + optionsArray.length) % optionsArray.length;
+                    valueSpan.textContent = optionsArray[currentIndex];
+                });
+            }
+
+            /**
+             * 为数值设置添加步进切换功能
+             * @param {string} baseId - 基础 ID (例如 'setting-overcharge-voltage')
+             * @param {object} options - 配置 { min, max, step, unit, precision, wrap }
+             */
+            function setupNumericStepper(baseId, options = {}) {
+                const prevButton = document.getElementById(`${baseId}-prev`);
+                const nextButton = document.getElementById(`${baseId}-next`);
+                const valueSpan = document.getElementById(baseId);
+
+                if (!prevButton || !nextButton || !valueSpan) return;
+
+                const {
+                    min = 0,
+                    max = 100,
+                    step = 1,
+                    unit = '',
+                    precision = 0,
+                    wrap = false
+                } = options;
+
+                const scale = Math.pow(10, precision);
+                const stepScaled = Math.round(step * scale);
+                const minScaled = Math.round(min * scale);
+                const maxScaled = Math.round(max * scale);
+
+                const parseCurrent = () => {
+                    const raw = valueSpan.textContent.trim().replace(unit, '');
+                    const value = Number(raw);
+                    if (!Number.isFinite(value)) return min;
+                    return Math.min(max, Math.max(min, value));
+                };
+
+                let currentScaled = Math.round(parseCurrent() * scale);
+
+                function formatValue(scaledValue) {
+                    return `${(scaledValue / scale).toFixed(precision)}${unit}`;
+                }
+
+                function setValue(nextScaled) {
+                    let updated = nextScaled;
+                    if (wrap) {
+                        if (updated > maxScaled) updated = minScaled;
+                        if (updated < minScaled) updated = maxScaled;
+                    } else {
+                        updated = Math.min(maxScaled, Math.max(minScaled, updated));
+                    }
+                    currentScaled = updated;
+                    valueSpan.textContent = formatValue(currentScaled);
+                }
+
+                setValue(currentScaled);
+
+                nextButton.addEventListener('click', () => {
+                    setValue(currentScaled + stepScaled);
+                });
+
+                prevButton.addEventListener('click', () => {
+                    setValue(currentScaled - stepScaled);
+                });
+            }
+
+            // 初始化所有可点击设置
+            setupSettingCycler('setting-battery-type', ['磷酸铁锂', '三元锂', '铅酸电池']);
+            setupSettingCycler('setting-battery-series', ['3串', '4串', '5串', '6串']);
+            setupSettingCycler('setting-light-delay', ['10秒', '30秒', '60秒', '120秒']);
+            setupNumericStepper('setting-overcharge-voltage', {
+                min: 3.2,
+                max: 3.6,
+                step: 0.1,
+                unit: 'V',
+                precision: 1
+            });
+            setupNumericStepper('setting-overdischarge-voltage', {
+                min: 2.4,
+                max: 2.8,
+                step: 0.1,
+                unit: 'V',
+                precision: 1
+            });
+            setupSettingCycler('setting-power-saving', ['关', '开']);
+            setupSettingCycler('setting-dual-season', ['否', '是']);
+            setupSettingCycler('setting-sensitivity', ['低', '中', '高']);
+
+            const powerSavingSection = document.getElementById('section-power-saving');
+            const powerSavingValue = document.getElementById('setting-power-saving');
+            const powerSavingPrev = document.getElementById('setting-power-saving-prev');
+            const powerSavingNext = document.getElementById('setting-power-saving-next');
+            const winterSection = document.getElementById('section-winter-adjustment');
+            const dualSeasonValue = document.getElementById('setting-dual-season');
+            const dualSeasonPrev = document.getElementById('setting-dual-season-prev');
+            const dualSeasonNext = document.getElementById('setting-dual-season-next');
+
+            const updatePowerSavingSection = () => {
+                const enabled = powerSavingValue && powerSavingValue.textContent.trim() === '开';
+                if (powerSavingSection) {
+                    powerSavingSection.classList.toggle('hidden', !enabled);
+                }
+            };
+
+            updatePowerSavingSection();
+            if (powerSavingPrev) powerSavingPrev.addEventListener('click', updatePowerSavingSection);
+            if (powerSavingNext) powerSavingNext.addEventListener('click', updatePowerSavingSection);
+
+            const updateWinterSection = () => {
+                const enabled = dualSeasonValue && dualSeasonValue.textContent.trim() === '是';
+                if (winterSection) {
+                    winterSection.classList.toggle('hidden', !enabled);
+                }
+            };
+
+            updateWinterSection();
+            if (dualSeasonPrev) dualSeasonPrev.addEventListener('click', updateWinterSection);
+            if (dualSeasonNext) dualSeasonNext.addEventListener('click', updateWinterSection);
+
+            const BASIC_MORE_STORAGE_KEY = 'mppt-basic-settings-more';
+            const basicMoreToggle = document.getElementById('basic-settings-more-toggle');
+            const basicMoreContent = document.getElementById('basic-settings-more');
+            const basicMoreIcon = basicMoreToggle ? basicMoreToggle.querySelector('[data-basic-more-icon]') : null;
+
+            const getBasicMoreState = () => {
+                try {
+                    return localStorage.getItem(BASIC_MORE_STORAGE_KEY) === 'true';
+                } catch (error) {
+                    return false;
+                }
+            };
+
+            const setBasicMoreState = (expanded) => {
+                try {
+                    localStorage.setItem(BASIC_MORE_STORAGE_KEY, expanded ? 'true' : 'false');
+                } catch (error) {
+                    // 忽略存储错误
+                }
+            };
+
+            function setBasicMoreExpanded(expanded) {
+                if (basicMoreContent) {
+                    basicMoreContent.classList.toggle('hidden', !expanded);
+                }
+                if (basicMoreToggle) {
+                    basicMoreToggle.setAttribute('aria-expanded', String(expanded));
+                    basicMoreToggle.setAttribute('aria-label', expanded ? '收起' : '更多');
+                }
+                if (basicMoreIcon) {
+                    basicMoreIcon.classList.toggle('rotate-180', expanded);
+                }
+            }
+
+            setBasicMoreExpanded(getBasicMoreState());
+            if (basicMoreToggle && basicMoreContent) {
+                basicMoreToggle.addEventListener('click', () => {
+                    const isExpanded = !basicMoreContent.classList.contains('hidden');
+                    const nextExpanded = !isExpanded;
+                    setBasicMoreExpanded(nextExpanded);
+                    setBasicMoreState(nextExpanded);
+                });
+            }
+            // --- OTA 页面交互逻辑 (新增) ---
+            // 修复：将所有 OTA 相关的 getElementById 移到 otaView 的点击事件监听器内部
+            // 或者，由于脚本在 DOMContentLoaded 后运行，所有元素都应该可用
+            // 错误的原因是这些元素确实不存在于 HTML 中。现在我已经添加了它们。
+            const otaLog = document.getElementById('ota-log');
+            const localFileInput = document.getElementById('select-from-local');
+            const localFileName = document.getElementById('local-file-name');
+            const otaSendButton = document.getElementById('ota-send-button');
+            const otaProgressContainer = document.getElementById('ota-progress-container');
+            const otaProgressBar = document.getElementById('ota-progress-bar');
+            const otaProgressPercent = document.getElementById('ota-progress-percent');
+            const wechatSelectButton = document.getElementById('select-from-wechat');
+
+            function logToOtaConsole(message, type = 'info') {
+                const timestamp = new Date().toLocaleTimeString();
+                
+                // 修复：在写入 value 之前检查 otaLog 是否存在
+                if (!otaLog) return; 
+                
+                otaLog.value += `[${timestamp}] ${message}\n`;
+                otaLog.scrollTop = otaLog.scrollHeight; // 自动滚动到底部
+            }
+
+            // 模拟连接
+            setTimeout(() => {
+                logToOtaConsole('蓝牙已连接. 设备: MPPT-DEMO1');
+                logToOtaConsole('固件版本: v1.0.2');
+                logToOtaConsole('等待操作...');
+            }, 1000);
+
+            // 修复：为事件监听器添加元素存在性检查
+            if (localFileInput) {
+                localFileInput.addEventListener('change', function() {
+                    if (this.files && this.files.length > 0) {
+                        const fileName = this.files[0].name;
+                        localFileName.textContent = fileName;
+                        localFileName.classList.add('text-amber-600', 'font-medium');
+                        logToOtaConsole(`已选择文件: ${fileName}`);
+                    } else {
+                        localFileName.textContent = '未选择文件';
+                        localFileName.classList.remove('text-amber-600', 'font-medium');
+                    }
+                });
+            }
+
+            // 微信文件选择 (模拟)
+            if (wechatSelectButton) {
+                wechatSelectButton.addEventListener('click', function() {
+                    logToOtaConsole('正在调用微信文件接口...', 'warn');
+                    // 模拟微信选择成功
+                    setTimeout(() => {
+                        const mockFile = 'from_wechat_firmware.bin';
+                        if (localFileName) {
+                            localFileName.textContent = mockFile + ' (来自微信)';
+                            localFileName.classList.add('text-amber-600', 'font-medium');
+                        }
+                        logToOtaConsole(`已选择文件: ${mockFile}`);
+                        // 清空本地文件输入，防止冲突
+                        if (localFileInput) localFileInput.value = ''; 
+                    }, 1500);
+                });
+            }
+
+            // OTA 发送 (模拟)
+            if (otaSendButton) {
+                otaSendButton.addEventListener('click', function() {
+                    if (!localFileName || localFileName.textContent === '未选择文件') {
+                        logToOtaConsole('错误: 请先选择一个固件文件', 'error');
+                        return;
+                    }
+
+                    logToOtaConsole(`开始发送: ${localFileName.textContent}`);
+                    otaSendButton.disabled = true;
+                    otaSendButton.textContent = '正在发送中...';
+                    if (otaProgressContainer) otaProgressContainer.classList.remove('hidden');
+
+                    let progress = 0;
+                    const interval = setInterval(() => {
+                        progress += Math.random() * 10;
+                        if (progress > 100) {
+                            progress = 100;
+                        }
+                        
+                        if (otaProgressBar) otaProgressBar.style.width = `${progress}%`;
+                        if (otaProgressPercent) otaProgressPercent.textContent = `${Math.round(progress)}%`;
+
+                        if (progress === 100) {
+                            clearInterval(interval);
+                            logToOtaConsole('发送完成. 设备正在重启...');
+                            setTimeout(() => {
+                                logToOtaConsole('设备重启成功. 固件版本: v1.0.3');
+                                logToOtaConsole('等待操作...');
+                                otaSendButton.disabled = false;
+                                otaSendButton.textContent = 'OTA 发送';
+                                if (otaProgressContainer) otaProgressContainer.classList.add('hidden');
+                                if (otaProgressBar) otaProgressBar.style.width = `0%`;
+                                if (otaProgressPercent) otaProgressPercent.textContent = `0%`;
+                                if (localFileName) {
+                                    localFileName.textContent = '未选择文件';
+                                    localFileName.classList.remove('text-amber-600', 'font-medium');
+                                }
+                                if (localFileInput) localFileInput.value = ''; // 清空选择
+                            }, 2000);
+                        }
+                    }, 300);
+                });
+            }
+
+        });
+    </script>
+
+</body>
+</html>
+
+
+
