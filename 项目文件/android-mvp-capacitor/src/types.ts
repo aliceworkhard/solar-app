@@ -4,14 +4,27 @@ export type ConnectionState =
   | "idle"
   | "scanning"
   | "connecting"
+  | "discovering"
+  | "subscribing"
   | "connected"
+  | "ready"
   | "disconnected"
   | "error";
+
+export type ScanStage = "quick" | "full";
 
 export interface DeviceBrief {
   deviceId: string;
   name: string;
   rssi: number;
+}
+
+export interface ScanProgressEvent {
+  devices: DeviceBrief[];
+  stage: ScanStage;
+  completed: boolean;
+  usedFallbackNoPrefix: boolean;
+  emittedAt: number;
 }
 
 export interface CharacteristicInfo {
@@ -30,6 +43,7 @@ export interface GattMap {
 
 export interface DeviceStatus {
   connected: boolean;
+  connectionState: ConnectionState;
   mode: string;
   power: number;
   battery?: number;
@@ -43,4 +57,3 @@ export interface LogEntry {
   level: "info" | "warn" | "error" | "tx" | "rx";
   message: string;
 }
-

@@ -3,19 +3,34 @@ import { CommandBuilder } from "../protocol/commandBuilder";
 import { FrameDecoder } from "../protocol/frameCodec";
 import { parseResponse } from "../protocol/responseParser";
 import { normalizeHex, spacedHex } from "../utils/hex";
-import type { DeviceBrief, DeviceStatus, GattMap, LogEntry, Unsubscribe, ConnectionState } from "../types";
+import type {
+  ConnectionState,
+  DeviceBrief,
+  DeviceStatus,
+  GattMap,
+  LogEntry,
+  ScanStage,
+  Unsubscribe
+} from "../types";
 import type { WriteType } from "../plugins/bleBridgePlugin";
 
 const PROFILE = {
   namePrefix: "AC632N",
   serviceUUID: "0000fff0-0000-1000-8000-00805f9b34fb",
   writeUUID: "0000fff1-0000-1000-8000-00805f9b34fb",
+  writeType: "write" as const,
   notifyUUID: "0000fff2-0000-1000-8000-00805f9b34fb",
   notifyUUIDCandidates: [
     "0000fff2-0000-1000-8000-00805f9b34fb",
     "0000fff3-0000-1000-8000-00805f9b34fb"
   ]
 } as const;
+
+const DEFAULT_SCAN_QUICK_WINDOW_MS = 1500;
+const DEFAULT_SCAN_FULL_WINDOW_MS = 4200;
+const DEFAULT_CONNECT_TIMEOUT_MS = 3200;
+const DEFAULT_DISCOVER_TIMEOUT_MS = 1800;
+const RECENT_DEVICE_KEY = "solar.remote.recentDeviceId";
 
 type PendingResolver = {
   resolve: (value: string) => void;
@@ -29,6 +44,16 @@ type PendingAnyResolver = {
   timer: ReturnType<typeof setTimeout>;
 };
 
+export interface ScanOptions {
+  quickWindowMs?: number;
+  fullWindowMs?: number;
+  allowFallbackNoPrefix?: boolean;
+  onProgress?: (
+    devices: DeviceBrief[],
+    meta: { stage: ScanStage; completed: boolean; usedFallbackNoPrefix: boolean }
+  ) => void;
+}
+
 export class DeviceController {
   private readonly ble = new BleBridge();
   private readonly frameDecoder = new FrameDecoder();
@@ -37,18 +62,21 @@ export class DeviceController {
   private readonly pendingResponse = new Map<number, PendingResolver>();
   private notifyUnsubscribe: Unsubscribe | null = null;
   private connUnsubscribe: Unsubscribe | null = null;
+  private scanProgressUnsubscribe: Unsubscribe | null = null;
   private commandChain: Promise<void> = Promise.resolve();
   private logs: LogEntry[] = [];
   private nextLogId = 1;
-  private currentWriteType: WriteType = "write";
+  private currentWriteType: WriteType = PROFILE.writeType;
   private currentWriteUUID: string = PROFILE.writeUUID;
   private currentNotifyUUID: string = PROFILE.notifyUUID;
   private currentDeviceId = "";
+  private recentDeviceId = "";
   private gattMap: GattMap | null = null;
   private pendingAnyNotify: PendingAnyResolver | null = null;
 
   private status: DeviceStatus = {
     connected: false,
+    connectionState: "idle",
     mode: "radar",
     power: 0,
     battery: 0,
@@ -56,34 +84,127 @@ export class DeviceController {
     lastUpdatedAt: Date.now()
   };
 
-  async scan(): Promise<DeviceBrief[]> {
-    this.addLog("info", "Start BLE scan");
-    let devices = await this.ble.scan(PROFILE.namePrefix);
-    if (!devices.length && PROFILE.namePrefix) {
-      this.addLog("warn", `No devices matched prefix=${PROFILE.namePrefix}, retrying without filter`);
-      devices = await this.ble.scan("");
+  constructor() {
+    this.recentDeviceId = this.readRecentDeviceId();
+  }
+
+  async scan(options: ScanOptions = {}): Promise<DeviceBrief[]> {
+    const quickWindowMs = options.quickWindowMs ?? DEFAULT_SCAN_QUICK_WINDOW_MS;
+    const fullWindowMs = options.fullWindowMs ?? DEFAULT_SCAN_FULL_WINDOW_MS;
+    const allowFallbackNoPrefix = options.allowFallbackNoPrefix ?? true;
+
+    if (this.scanProgressUnsubscribe) {
+      this.scanProgressUnsubscribe();
+      this.scanProgressUnsubscribe = null;
     }
-    this.addLog("info", `Scan result count=${devices.length}`);
-    return devices;
+
+    if (options.onProgress) {
+      this.scanProgressUnsubscribe = this.ble.onScanProgress((event) => {
+        const sorted = this.sortDevices(event.devices);
+        options.onProgress?.(sorted, {
+          stage: event.stage,
+          completed: event.completed,
+          usedFallbackNoPrefix: event.usedFallbackNoPrefix
+        });
+        this.addLog(
+          "info",
+          `scanProgress stage=${event.stage} count=${sorted.length}${event.usedFallbackNoPrefix ? " fallback" : ""}${event.completed ? " done" : ""}`
+        );
+        if (event.completed && this.scanProgressUnsubscribe) {
+          this.scanProgressUnsubscribe();
+          this.scanProgressUnsubscribe = null;
+        }
+      });
+    }
+
+    this.mergeStatus({
+      connectionState: "scanning",
+      lastUpdatedAt: Date.now()
+    });
+    this.addLog(
+      "info",
+      `Start BLE scan quick=${quickWindowMs}ms full=${fullWindowMs}ms`
+    );
+
+    try {
+      const devices = await this.ble.scan({
+        namePrefix: PROFILE.namePrefix,
+        quickWindowMs,
+        fullWindowMs,
+        allowFallbackNoPrefix
+      });
+      const sorted = this.sortDevices(devices);
+      this.addLog("info", `Scan quick result count=${sorted.length}`);
+      this.mergeStatus({ connectionState: "idle", lastUpdatedAt: Date.now() });
+      return sorted;
+    } catch (error) {
+      this.mergeStatus({ connectionState: "error", lastUpdatedAt: Date.now() });
+      throw error;
+    }
   }
 
   async connectAndPrepare(deviceId: string): Promise<GattMap> {
     this.currentDeviceId = deviceId;
     this.addLog("info", `Connect ${deviceId}`);
     this.attachListeners();
-    await this.ble.connect(deviceId);
-    const map = await this.ble.discover(deviceId);
-    this.gattMap = map;
-    this.addGattMapLog(map);
-    this.currentWriteUUID = this.resolveWriteUUID(map, this.currentWriteUUID);
-    this.resolveWriteType(map, this.currentWriteUUID);
-    this.currentNotifyUUID = this.resolveNotifyUUID(map, this.currentNotifyUUID);
-    await this.ble.subscribe(deviceId, this.currentNotifyUUID);
-    this.addLog("info", `Subscribed notify ${this.currentNotifyUUID}`);
-    this.addLog("info", `Selected writeUUID=${this.currentWriteUUID}`);
+    this.mergeStatus({
+      connected: false,
+      connectionState: "connecting",
+      lastUpdatedAt: Date.now()
+    });
+    try {
+      await this.ble.connect({
+        deviceId,
+        connectTimeoutMs: DEFAULT_CONNECT_TIMEOUT_MS,
+        discoverTimeoutMs: DEFAULT_DISCOVER_TIMEOUT_MS
+      });
+      this.mergeStatus({ connectionState: "discovering", lastUpdatedAt: Date.now() });
+      const map = await this.ble.discover(deviceId);
+      this.gattMap = map;
+      this.addGattMapLog(map);
+      this.currentWriteUUID = this.resolveWriteUUID(map, this.currentWriteUUID);
+      this.resolveWriteType(map, this.currentWriteUUID);
+      this.currentNotifyUUID = this.resolveNotifyUUID(map, this.currentNotifyUUID);
+      this.mergeStatus({ connectionState: "subscribing", lastUpdatedAt: Date.now() });
+      await this.ble.subscribe(deviceId, this.currentNotifyUUID);
+      this.addLog("info", `Subscribed notify ${this.currentNotifyUUID}`);
+      this.addLog("info", `Selected writeUUID=${this.currentWriteUUID}`);
+      this.recentDeviceId = deviceId;
+      this.writeRecentDeviceId(deviceId);
+      this.mergeStatus({
+        connected: true,
+        connectionState: "ready",
+        lastUpdatedAt: Date.now()
+      });
+      return map;
+    } catch (error) {
+      this.mergeStatus({
+        connected: false,
+        connectionState: "error",
+        lastUpdatedAt: Date.now()
+      });
+      throw error;
+    }
+  }
 
-    this.mergeStatus({ connected: true, lastUpdatedAt: Date.now() });
-    return map;
+  async quickConnect(): Promise<boolean> {
+    const targetDeviceId = this.recentDeviceId || this.readRecentDeviceId();
+    if (!targetDeviceId) {
+      this.addLog("warn", "No recent device for quick connect");
+      return false;
+    }
+    try {
+      await this.connectAndPrepare(targetDeviceId);
+      this.addLog("info", `Quick connect success ${targetDeviceId}`);
+      return true;
+    } catch (error) {
+      this.addLog("warn", `Quick connect failed ${targetDeviceId}: ${this.errorMessage(error)}`);
+      return false;
+    }
+  }
+
+  getRecentDeviceId(): string {
+    return this.recentDeviceId;
   }
 
   async disconnect(): Promise<void> {
@@ -93,6 +214,7 @@ export class DeviceController {
     await this.ble.disconnect(this.currentDeviceId);
     this.mergeStatus({
       connected: false,
+      connectionState: "disconnected",
       lastUpdatedAt: Date.now()
     });
     this.currentDeviceId = "";
@@ -135,9 +257,7 @@ export class DeviceController {
   }
 
   async sendRawHex(hex: string, writeType: WriteType): Promise<void> {
-    if (!this.currentDeviceId) {
-      throw new Error("No active device.");
-    }
+    this.ensureReadyForTx();
     const normalized = normalizeHex(hex);
     if (!normalized) {
       throw new Error("HEX is empty.");
@@ -147,9 +267,7 @@ export class DeviceController {
   }
 
   async sendRawHexAndWait(hex: string, writeType: WriteType, timeoutMs = 2000): Promise<string> {
-    if (!this.currentDeviceId) {
-      throw new Error("No active device.");
-    }
+    this.ensureReadyForTx();
     if (this.pendingAnyNotify) {
       throw new Error("Another raw waiting task is in progress.");
     }
@@ -216,7 +334,9 @@ export class DeviceController {
       this.resolveWriteType(this.gattMap, this.currentWriteUUID);
     }
     if (this.currentDeviceId) {
+      this.mergeStatus({ connectionState: "subscribing", lastUpdatedAt: Date.now() });
       await this.ble.subscribe(this.currentDeviceId, this.currentNotifyUUID);
+      this.mergeStatus({ connectionState: "ready", lastUpdatedAt: Date.now() });
       this.addLog("info", `Subscribed notify ${this.currentNotifyUUID}`);
     }
     this.addLog("info", `Selected writeUUID=${this.currentWriteUUID}`);
@@ -240,9 +360,7 @@ export class DeviceController {
 
   private async dispatchCommand(payloadHex: string, expectedResponse: number): Promise<string> {
     return this.runExclusive(async () => {
-      if (!this.currentDeviceId) {
-        throw new Error("No active device.");
-      }
+      this.ensureReadyForTx();
       return this.sendWithRetry(payloadHex, expectedResponse, 2, 2000);
     });
   }
@@ -271,9 +389,7 @@ export class DeviceController {
     expectedResponse: number,
     timeoutMs: number
   ): Promise<string> {
-    if (!this.currentDeviceId) {
-      throw new Error("No active device.");
-    }
+    this.ensureReadyForTx();
     if (this.pendingResponse.has(expectedResponse)) {
       throw new Error(`Command conflict, pending response 0x${expectedResponse.toString(16)}`);
     }
@@ -287,6 +403,15 @@ export class DeviceController {
     this.addLog("tx", spacedHex(payloadHex));
     await this.ble.write(this.currentDeviceId, this.currentWriteUUID, payloadHex, this.currentWriteType);
     return waiter;
+  }
+
+  private ensureReadyForTx(): void {
+    if (!this.currentDeviceId) {
+      throw new Error("No active device.");
+    }
+    if (this.status.connectionState !== "ready") {
+      throw new Error(`Device is not ready. currentState=${this.status.connectionState}`);
+    }
   }
 
   private handleIncoming(packetHex: string): void {
@@ -319,29 +444,46 @@ export class DeviceController {
 
   private handleConnectionEvent(state: ConnectionState, reason?: string): void {
     this.addLog("info", `connection ${state}${reason ? ` (${reason})` : ""}`);
-    if (state === "disconnected" || state === "error") {
+    if (state === "error" || state === "disconnected") {
       this.mergeStatus({
         connected: false,
+        connectionState: state,
         lastUpdatedAt: Date.now()
       });
+      return;
     }
+    if (state === "ready" || state === "connected") {
+      this.mergeStatus({
+        connected: true,
+        connectionState: state === "connected" ? "ready" : state,
+        lastUpdatedAt: Date.now()
+      });
+      return;
+    }
+    this.mergeStatus({
+      connectionState: state,
+      lastUpdatedAt: Date.now()
+    });
   }
 
   private resolveWriteType(gattMap: GattMap, writeUUID: string): void {
+    this.currentWriteType = PROFILE.writeType;
     for (const service of gattMap.services) {
       for (const characteristic of service.characteristics) {
         if (characteristic.uuid.toLowerCase() !== writeUUID.toLowerCase()) {
           continue;
         }
-        if (characteristic.properties.includes("write")) {
-          this.currentWriteType = "write";
-        } else if (characteristic.properties.includes("writeNoResponse")) {
-          this.currentWriteType = "writeNoResponse";
+        if (!characteristic.properties.includes(PROFILE.writeType)) {
+          this.addLog(
+            "warn",
+            `Profile writeType=${PROFILE.writeType} not advertised by ${writeUUID}, force using profile setting`
+          );
         }
-        this.addLog("info", `Detected writeType=${this.currentWriteType}`);
+        this.addLog("info", `Locked writeType=${this.currentWriteType}`);
         return;
       }
     }
+    this.addLog("warn", `Write characteristic ${writeUUID} not found, fallback to profile writeType=${this.currentWriteType}`);
   }
 
   private resolveWriteUUID(gattMap: GattMap, preferred: string): string {
@@ -378,6 +520,10 @@ export class DeviceController {
 
   private canWrite(properties: string[]): boolean {
     return properties.includes("write") || properties.includes("writeNoResponse");
+  }
+
+  private sortDevices(devices: DeviceBrief[]): DeviceBrief[] {
+    return [...devices].sort((left, right) => right.rssi - left.rssi);
   }
 
   private collectChannelCandidates(gattMap: GattMap): { writeUUIDs: string[]; notifyUUIDs: string[] } {
@@ -446,6 +592,44 @@ export class DeviceController {
     for (const listener of this.logListeners) {
       listener(this.getLogs());
     }
+  }
+
+  private readRecentDeviceId(): string {
+    const storage = this.getStorage();
+    if (!storage) {
+      return "";
+    }
+    try {
+      return storage.getItem(RECENT_DEVICE_KEY) ?? "";
+    } catch {
+      return "";
+    }
+  }
+
+  private writeRecentDeviceId(deviceId: string): void {
+    const storage = this.getStorage();
+    if (!storage) {
+      return;
+    }
+    try {
+      storage.setItem(RECENT_DEVICE_KEY, deviceId);
+    } catch {
+      // Ignore storage failures and keep in-memory fallback only.
+    }
+  }
+
+  private getStorage(): Storage | null {
+    if (typeof globalThis === "undefined" || !("localStorage" in globalThis)) {
+      return null;
+    }
+    return globalThis.localStorage;
+  }
+
+  private errorMessage(error: unknown): string {
+    if (error instanceof Error) {
+      return error.message;
+    }
+    return String(error);
   }
 
   private async runExclusive<T>(task: () => Promise<T>): Promise<T> {

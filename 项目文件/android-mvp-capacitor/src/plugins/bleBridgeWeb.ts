@@ -1,7 +1,9 @@
 import { WebPlugin } from "@capacitor/core";
-import type { ConnectionState, DeviceBrief, GattMap } from "../types";
+import type { ConnectionState, DeviceBrief, GattMap, ScanProgressEvent } from "../types";
 import type {
+  BleScanOptions,
   BleBridgePlugin,
+  ConnectOptions,
   ConnectionStateEvent,
   NotifyEvent,
   WriteType
@@ -30,31 +32,53 @@ export class BleBridgeWeb extends WebPlugin implements BleBridgePlugin {
   private activeDeviceId = "";
   private notifyTimer: ReturnType<typeof setInterval> | null = null;
 
-  async scan(options: { namePrefix: string }): Promise<{ devices: DeviceBrief[] }> {
+  async scan(options: BleScanOptions): Promise<{ devices: DeviceBrief[] }> {
     await this.delay(450);
+    const stage: ScanProgressEvent = {
+      devices: [MOCK_DEVICE],
+      stage: "quick",
+      completed: false,
+      usedFallbackNoPrefix: false,
+      emittedAt: Date.now()
+    };
+    this.notifyListeners("scanProgress", stage);
+    setTimeout(() => {
+      const fullStage: ScanProgressEvent = {
+        devices: [MOCK_DEVICE],
+        stage: "full",
+        completed: true,
+        usedFallbackNoPrefix: false,
+        emittedAt: Date.now()
+      };
+      this.notifyListeners("scanProgress", fullStage);
+    }, Math.max(600, Math.floor((options.fullWindowMs ?? 1800) / 3)));
     if (!MOCK_DEVICE.name.startsWith(options.namePrefix)) {
       return { devices: [] };
     }
     return { devices: [MOCK_DEVICE] };
   }
 
-  async connect(options: { deviceId: string }): Promise<void> {
+  async connect(options: ConnectOptions): Promise<void> {
     await this.delay(250);
     this.connected = true;
     this.activeDeviceId = options.deviceId;
-    this.emitConnectionState("connected");
+    this.emitConnectionState("discovering");
   }
 
-  async discover(): Promise<GattMap> {
+  async discover(options: { deviceId: string }): Promise<GattMap> {
+    void options;
     await this.delay(180);
     return MOCK_GATT;
   }
 
-  async subscribe(): Promise<void> {
+  async subscribe(options: { deviceId: string; notifyUUID: string }): Promise<void> {
+    void options;
     if (!this.connected) {
       throw new Error("Device not connected.");
     }
+    this.emitConnectionState("subscribing");
     this.startMockNotify();
+    this.emitConnectionState("ready");
   }
 
   async write(options: {
@@ -72,7 +96,8 @@ export class BleBridgeWeb extends WebPlugin implements BleBridgePlugin {
     this.emitNotify(loopback);
   }
 
-  async disconnect(): Promise<void> {
+  async disconnect(options: { deviceId: string }): Promise<void> {
+    void options;
     this.stopMockNotify();
     this.connected = false;
     this.activeDeviceId = "";
@@ -115,4 +140,3 @@ export class BleBridgeWeb extends WebPlugin implements BleBridgePlugin {
     await new Promise<void>((resolve) => setTimeout(resolve, ms));
   }
 }
-

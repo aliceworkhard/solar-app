@@ -1,15 +1,21 @@
-import type { ConnectionState, DeviceBrief, GattMap, Unsubscribe } from "../types";
+import type {
+  ConnectionState,
+  DeviceBrief,
+  GattMap,
+  ScanProgressEvent,
+  Unsubscribe
+} from "../types";
 import { BleBridgeNative } from "../plugins/bleBridgePlugin";
-import type { WriteType } from "../plugins/bleBridgePlugin";
+import type { BleScanOptions, ConnectOptions, WriteType } from "../plugins/bleBridgePlugin";
 
 export class BleBridge {
-  async scan(namePrefix: string): Promise<DeviceBrief[]> {
-    const result = await BleBridgeNative.scan({ namePrefix, timeoutMs: 5000 });
+  async scan(options: BleScanOptions): Promise<DeviceBrief[]> {
+    const result = await BleBridgeNative.scan(options);
     return result.devices;
   }
 
-  async connect(deviceId: string): Promise<void> {
-    await BleBridgeNative.connect({ deviceId });
+  async connect(options: ConnectOptions): Promise<void> {
+    await BleBridgeNative.connect(options);
   }
 
   async discover(deviceId: string): Promise<GattMap> {
@@ -58,5 +64,17 @@ export class BleBridge {
       void handlePromise.then((handle) => handle.remove());
     };
   }
-}
 
+  onScanProgress(callback: (event: ScanProgressEvent) => void): Unsubscribe {
+    let active = true;
+    const handlePromise = BleBridgeNative.addListener("scanProgress", (event) => {
+      if (active) {
+        callback(event);
+      }
+    });
+    return () => {
+      active = false;
+      void handlePromise.then((handle) => handle.remove());
+    };
+  }
+}

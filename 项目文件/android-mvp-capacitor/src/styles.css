@@ -176,6 +176,10 @@ main {
   font-size: 13px;
 }
 
+.stage-chip {
+  margin-top: 10px;
+}
+
 .device-list {
   margin-top: 12px;
   display: grid;
@@ -189,6 +193,11 @@ main {
   border-radius: 8px;
   padding: 10px 12px;
   background: #fff;
+}
+
+.device-item.best {
+  border-color: rgba(234, 143, 0, 0.55);
+  box-shadow: inset 0 0 0 1px rgba(234, 143, 0, 0.22);
 }
 
 .device-name {

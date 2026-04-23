@@ -52,9 +52,11 @@ export class App {
             </div>
             <div class="toolbar">
               <button class="btn icon" id="scanBtn" title="扫描设备">扫描</button>
+              <button class="btn ghost" id="quickConnectBtn" title="快速连接">快连</button>
               <button class="btn ghost" id="disconnectBtn" title="断开连接">断开</button>
               <button class="btn ghost" id="debugToggleBtn" title="调试日志">调试</button>
             </div>
+            <div class="chip stage-chip" id="connStageChip">连接阶段：idle</div>
             <div class="device-list" id="deviceList"></div>
             <div class="quick-grid">
               <div class="kv"><span>模式</span><strong id="modeValue">-</strong></div>
@@ -118,9 +120,7 @@ export class App {
               <input id="rawHexInput" type="text" placeholder="AA5502010000" />
               <select id="rawWriteType">
                 <option value="write">write</option>
-                <option value="writeNoResponse">writeNoResponse</option>
               </select>
-              <label class="chip"><input id="rawWaitAck" type="checkbox" checked /> 等待BLE回包</label>
               <button class="btn" id="rawSendBtn">发送HEX</button>
             </div>
             <pre id="logArea"></pre>
@@ -139,6 +139,9 @@ export class App {
   private bindEvents(): void {
     this.byId("scanBtn").addEventListener("click", () => {
       void this.scanDevices();
+    });
+    this.byId("quickConnectBtn").addEventListener("click", () => {
+      void this.quickConnectPreferred();
     });
     this.byId("disconnectBtn").addEventListener("click", () => {
       void this.disconnectDevice();
@@ -196,11 +199,59 @@ export class App {
   private async scanDevices(): Promise<void> {
     try {
       this.setResult("扫描中...");
-      this.devices = await this.controller.scan();
+      this.devices = [];
+      this.refreshDeviceList();
+      this.devices = await this.controller.scan({
+        quickWindowMs: 1500,
+        fullWindowMs: 4200,
+        allowFallbackNoPrefix: true,
+        onProgress: (devices, meta) => {
+          this.devices = devices;
+          this.refreshDeviceList();
+          if (meta.completed) {
+            this.setResult(
+              `扫描补全完成：${devices.length} 台${meta.usedFallbackNoPrefix ? "（已触发无前缀补扫）" : ""}`
+            );
+          }
+        }
+      });
       this.refreshDeviceList();
       this.setResult(`扫描完成：${this.devices.length} 台`);
     } catch (error) {
       this.setResult(`扫描失败：${this.errorMessage(error)}`);
+    }
+  }
+
+  private async quickConnectPreferred(): Promise<void> {
+    try {
+      this.setResult("正在尝试快速连接最近设备...");
+      const quickConnected = await this.controller.quickConnect();
+      if (quickConnected) {
+        this.setResult("快速连接成功");
+        this.refreshStatus();
+        this.refreshUuidSelectors();
+        return;
+      }
+
+      this.setResult("快连失败，自动扫描并连接信号最强设备...");
+      this.devices = await this.controller.scan({
+        quickWindowMs: 1500,
+        fullWindowMs: 4200,
+        allowFallbackNoPrefix: true,
+        onProgress: (devices) => {
+          this.devices = devices;
+          this.refreshDeviceList();
+        }
+      });
+      this.refreshDeviceList();
+      const strongest = this.devices[0];
+      if (!strongest) {
+        this.setResult("未发现可连接设备");
+        return;
+      }
+      await this.connectDevice(strongest);
+    } catch (error) {
+      this.setResult(`快连失败：${this.errorMessage(error)}`);
     }
   }
 
@@ -265,15 +316,9 @@ export class App {
   private async handleRawSend(): Promise<void> {
     const hexInput = this.byId("rawHexInput") as HTMLInputElement;
     const writeType = (this.byId("rawWriteType") as HTMLSelectElement).value as "write" | "writeNoResponse";
-    const waitAck = (this.byId("rawWaitAck") as HTMLInputElement).checked;
     try {
-      if (waitAck) {
-        const rxHex = await this.controller.sendRawHexAndWait(hexInput.value, writeType, 2000);
-        this.setResult(`RAW收发成功 TX=${spacedHex(hexInput.value)} RX=${spacedHex(rxHex)}`);
-        return;
-      }
       await this.controller.sendRawHex(hexInput.value, writeType);
-      this.setResult(`RAW已发送 TX=${spacedHex(hexInput.value)}（未等待BLE回包）`);
+      this.setResult(`RAW已发送 TX=${spacedHex(hexInput.value)}（不等待BLE回包）`);
     } catch (error) {
       this.setResult(`RAW发送失败：${this.errorMessage(error)}`);
     }
@@ -285,12 +330,14 @@ export class App {
       list.innerHTML = `<div class="device-empty">暂无设备，先点击扫描</div>`;
       return;
     }
-    list.innerHTML = this.devices
+    const sortedDevices = [...this.devices].sort((left, right) => right.rssi - left.rssi);
+    this.devices = sortedDevices;
+    list.innerHTML = sortedDevices
       .map(
-        (device) => `
-        <button class="device-item" data-device-id="${device.deviceId}">
+        (device, index) => `
+        <button class="device-item ${index === 0 ? "best" : ""}" data-device-id="${device.deviceId}">
           <div class="device-name">${device.name}</div>
-          <div class="device-sub">RSSI ${device.rssi} dBm</div>
+          <div class="device-sub">RSSI ${device.rssi} dBm${index === 0 ? " · strongest" : ""}</div>
         </button>
       `
       )
@@ -309,8 +356,12 @@ export class App {
     if (!this.root.childElementCount) {
       return;
     }
-    this.byId("connBadge").textContent = this.status.connected ? "已连接" : "未连接";
+    const ready = this.status.connectionState === "ready";
+    this.byId("connBadge").textContent = this.status.connected
+      ? `已连接 (${this.status.connectionState})`
+      : `状态: ${this.status.connectionState}`;
     this.byId("connBadge").classList.toggle("online", this.status.connected);
+    this.byId("connStageChip").textContent = `连接阶段：${this.status.connectionState}`;
     this.byId("modeValue").textContent = this.status.mode;
     this.byId("powerValue").textContent = `${this.status.power}%`;
     this.byId("batteryValue").textContent = this.status.battery == null ? "-" : `${this.status.battery}%`;
@@ -321,7 +372,11 @@ export class App {
       button.classList.toggle("active", button.dataset.mode === this.status.mode);
     });
     const enterControlBtn = this.byId("enterControlBtn") as HTMLButtonElement;
-    enterControlBtn.disabled = !this.status.connected;
+    enterControlBtn.disabled = !ready;
+    const controlButtons = ["readStatusBtn", "readVersionBtn", "powerOnBtn", "powerOffBtn", "setParamBtn", "rawSendBtn"];
+    for (const id of controlButtons) {
+      (this.byId(id) as HTMLButtonElement).disabled = !ready;
+    }
   }
 
   private refreshLogs(): void {
@@ -354,6 +409,7 @@ export class App {
     this.renderUuidOptions(notifySelect, candidates.notifyUUIDs, selected.notifyUUID);
 
     applyBtn.disabled = !this.status.connected || !candidates.writeUUIDs.length || !candidates.notifyUUIDs.length;
+    (this.byId("quickConnectBtn") as HTMLButtonElement).disabled = this.status.connectionState === "connecting";
   }
 
   private renderUuidOptions(

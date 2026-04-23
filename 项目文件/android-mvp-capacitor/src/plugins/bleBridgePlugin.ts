@@ -1,8 +1,21 @@
 import { registerPlugin } from "@capacitor/core";
 import type { PluginListenerHandle } from "@capacitor/core";
-import type { ConnectionState, DeviceBrief, GattMap } from "../types";
+import type { ConnectionState, DeviceBrief, GattMap, ScanProgressEvent } from "../types";
 
 export type WriteType = "write" | "writeNoResponse";
+
+export interface BleScanOptions {
+  namePrefix: string;
+  quickWindowMs?: number;
+  fullWindowMs?: number;
+  allowFallbackNoPrefix?: boolean;
+}
+
+export interface ConnectOptions {
+  deviceId: string;
+  connectTimeoutMs?: number;
+  discoverTimeoutMs?: number;
+}
 
 export interface NotifyEvent {
   deviceId: string;
@@ -16,8 +29,8 @@ export interface ConnectionStateEvent {
 }
 
 export interface BleBridgePlugin {
-  scan(options: { namePrefix: string; timeoutMs?: number }): Promise<{ devices: DeviceBrief[] }>;
-  connect(options: { deviceId: string }): Promise<void>;
+  scan(options: BleScanOptions): Promise<{ devices: DeviceBrief[] }>;
+  connect(options: ConnectOptions): Promise<void>;
   discover(options: { deviceId: string }): Promise<GattMap>;
   subscribe(options: { deviceId: string; notifyUUID: string }): Promise<void>;
   write(options: {
@@ -34,6 +47,10 @@ export interface BleBridgePlugin {
   addListener(
     eventName: "connectionState",
     listenerFunc: (event: ConnectionStateEvent) => void
+  ): Promise<PluginListenerHandle>;
+  addListener(
+    eventName: "scanProgress",
+    listenerFunc: (event: ScanProgressEvent) => void
   ): Promise<PluginListenerHandle>;
   removeAllListeners(): Promise<void>;
 }

@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { DeviceController } from "./deviceController";
-import type { DeviceBrief, GattMap, ConnectionState } from "../types";
-import type { WriteType } from "../plugins/bleBridgePlugin";
+import type {
+  ConnectionState,
+  DeviceBrief,
+  GattMap,
+  ScanStage,
+  ScanProgressEvent
+} from "../types";
+import type { BleScanOptions, WriteType, ConnectOptions } from "../plugins/bleBridgePlugin";
 
 const SERVICE_UUID = "0000fff0-0000-1000-8000-00805f9b34fb";
 const WRITE_UUID = "0000fff1-0000-1000-8000-00805f9b34fb";
@@ -12,20 +18,29 @@ class MockBleBridge {
   readonly calls: string[] = [];
   notifyListener?: (packetHex: string, deviceId: string) => void;
   connectionListener?: (state: ConnectionState, reason?: string) => void;
+  scanProgressListener?: (event: ScanProgressEvent) => void;
   map: GattMap;
-  scanResultByPrefix = new Map<string, DeviceBrief[]>();
+  quickScanDevices: DeviceBrief[] = [];
+  failConnect = false;
+  lastScanOptions?: BleScanOptions;
+  lastConnectOptions?: ConnectOptions;
 
   constructor(map: GattMap) {
     this.map = map;
   }
 
-  async scan(namePrefix: string): Promise<DeviceBrief[]> {
-    this.calls.push(`scan:${namePrefix}`);
-    return this.scanResultByPrefix.get(namePrefix) ?? [];
+  async scan(options: BleScanOptions): Promise<DeviceBrief[]> {
+    this.calls.push(`scan:${options.namePrefix}`);
+    this.lastScanOptions = options;
+    return this.quickScanDevices;
   }
 
-  async connect(deviceId: string): Promise<void> {
-    this.calls.push(`connect:${deviceId}`);
+  async connect(options: ConnectOptions): Promise<void> {
+    this.calls.push(`connect:${options.deviceId}`);
+    this.lastConnectOptions = options;
+    if (this.failConnect) {
+      throw new Error("mock connect failed");
+    }
   }
 
   async discover(deviceId: string): Promise<GattMap> {
@@ -62,8 +77,36 @@ class MockBleBridge {
     return () => undefined;
   }
 
+  onScanProgress(callback: (event: ScanProgressEvent) => void): () => void {
+    this.calls.push("onScanProgress");
+    this.scanProgressListener = callback;
+    return () => {
+      this.calls.push("offScanProgress");
+      this.scanProgressListener = undefined;
+    };
+  }
+
   emitNotify(packetHex: string, deviceId: string): void {
     this.notifyListener?.(packetHex, deviceId);
+  }
+
+  emitConnectionState(state: ConnectionState, reason?: string): void {
+    this.connectionListener?.(state, reason);
+  }
+
+  emitScanProgress(
+    devices: DeviceBrief[],
+    stage: ScanStage,
+    completed: boolean,
+    usedFallbackNoPrefix: boolean
+  ): void {
+    this.scanProgressListener?.({
+      devices,
+      stage,
+      completed,
+      usedFallbackNoPrefix,
+      emittedAt: Date.now()
+    });
   }
 }
 
@@ -81,7 +124,10 @@ describe("DeviceController BLE flow", () => {
       ]
     };
     const bridge = new MockBleBridge(map);
-    const controller = new DeviceController() as unknown as { ble: MockBleBridge; connectAndPrepare: (id: string) => Promise<GattMap> };
+    const controller = new DeviceController() as unknown as {
+      ble: MockBleBridge;
+      connectAndPrepare: (id: string) => Promise<GattMap>;
+    };
     controller.ble = bridge;
 
     await controller.connectAndPrepare("D1");
@@ -187,21 +233,101 @@ describe("DeviceController BLE flow", () => {
     expect(controller.getSelectedChannels().notifyUUID).toBe(customNotify);
   });
 
-  it("retries scan without namePrefix when filtered scan returns empty", async () => {
+  it("uses quick/full scan options and streams progress updates", async () => {
     const bridge = new MockBleBridge({ services: [] });
-    bridge.scanResultByPrefix.set("AC632N", []);
-    bridge.scanResultByPrefix.set("", [
-      { deviceId: "D1", name: "Unknown", rssi: -55 }
-    ]);
+    bridge.quickScanDevices = [{ deviceId: "D2", name: "AC632N_2", rssi: -66 }];
+    const progress: DeviceBrief[][] = [];
     const controller = new DeviceController() as unknown as {
       ble: MockBleBridge;
-      scan: () => Promise<DeviceBrief[]>;
+      scan: (options?: {
+        quickWindowMs?: number;
+        fullWindowMs?: number;
+        onProgress?: (devices: DeviceBrief[]) => void;
+      }) => Promise<DeviceBrief[]>;
     };
     controller.ble = bridge;
 
-    const devices = await controller.scan();
-    expect(devices).toHaveLength(1);
-    expect(bridge.calls).toContain("scan:AC632N");
-    expect(bridge.calls).toContain("scan:");
+    const quickDevices = await controller.scan({
+      quickWindowMs: 1500,
+      fullWindowMs: 4200,
+      onProgress: (devices) => {
+        progress.push(devices);
+      }
+    });
+    bridge.emitScanProgress(
+      [
+        { deviceId: "D2", name: "AC632N_2", rssi: -66 },
+        { deviceId: "D1", name: "AC632N_1", rssi: -49 }
+      ],
+      "full",
+      false,
+      false
+    );
+
+    expect(quickDevices).toHaveLength(1);
+    expect(bridge.lastScanOptions).toBeTruthy();
+    expect(bridge.lastScanOptions?.quickWindowMs).toBe(1500);
+    expect(bridge.lastScanOptions?.fullWindowMs).toBe(4200);
+    expect(bridge.lastScanOptions?.allowFallbackNoPrefix).toBe(true);
+    expect(progress.length).toBeGreaterThan(0);
+    const lastProgressBatch = progress[progress.length - 1];
+    expect(lastProgressBatch?.[0]?.deviceId).toBe("D1");
+  });
+
+  it("tracks ready state and can quick-connect to the last successful device", async () => {
+    const map: GattMap = {
+      services: [
+        {
+          uuid: SERVICE_UUID,
+          characteristics: [
+            { uuid: WRITE_UUID, properties: ["write"] },
+            { uuid: NOTIFY_UUID_FFF2, properties: ["notify"] }
+          ]
+        }
+      ]
+    };
+    const bridge = new MockBleBridge(map);
+    const controller = new DeviceController() as unknown as {
+      ble: MockBleBridge;
+      connectAndPrepare: (id: string) => Promise<GattMap>;
+      quickConnect: () => Promise<boolean>;
+      getStatus: () => { connectionState: ConnectionState; connected: boolean };
+    };
+    controller.ble = bridge;
+
+    await controller.connectAndPrepare("D1");
+    expect(controller.getStatus().connectionState).toBe("ready");
+    expect(controller.getStatus().connected).toBe(true);
+
+    await expect(controller.quickConnect()).resolves.toBe(true);
+    expect(bridge.calls.filter((entry) => entry === "connect:D1").length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("locks command writeType to write mode for this project profile", async () => {
+    const map: GattMap = {
+      services: [
+        {
+          uuid: SERVICE_UUID,
+          characteristics: [
+            { uuid: WRITE_UUID, properties: ["writeNoResponse"] },
+            { uuid: NOTIFY_UUID_FFF2, properties: ["notify"] }
+          ]
+        }
+      ]
+    };
+    const bridge = new MockBleBridge(map);
+    const controller = new DeviceController() as unknown as {
+      ble: MockBleBridge;
+      connectAndPrepare: (id: string) => Promise<GattMap>;
+      getWriteType: () => WriteType;
+      sendRawHex: (hex: string, writeType: WriteType) => Promise<void>;
+    };
+    controller.ble = bridge;
+    await controller.connectAndPrepare("D1");
+    await controller.sendRawHex("12 34 56", controller.getWriteType());
+
+    expect(controller.getWriteType()).toBe("write");
+    const writeCall = bridge.calls.find((entry) => entry.endsWith(":123456:write"));
+    expect(writeCall).toBeTruthy();
   });
 });
