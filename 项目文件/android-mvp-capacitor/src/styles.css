@@ -299,7 +299,8 @@ main {
 
 .param-row input,
 .raw-row input,
-.raw-row select {
+.raw-row select,
+.uuid-row select {
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 10px;
@@ -316,10 +317,17 @@ main {
   background: #fafbfd;
 }
 
+.debug .uuid-row {
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
 .debug .raw-row {
   margin-top: 10px;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
   gap: 8px;
 }
 
@@ -364,6 +372,10 @@ main {
   }
 
   .debug .raw-row {
+    grid-template-columns: 1fr;
+  }
+
+  .debug .uuid-row {
     grid-template-columns: 1fr;
   }
 }

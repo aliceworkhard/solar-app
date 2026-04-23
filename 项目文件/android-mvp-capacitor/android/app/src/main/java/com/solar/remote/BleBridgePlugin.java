@@ -169,11 +169,19 @@ public class BleBridgePlugin extends Plugin {
                 if (device == null) {
                     return;
                 }
-                String name = device.getName();
-                if (!TextUtils.isEmpty(activeNamePrefix) && (name == null || !name.startsWith(activeNamePrefix))) {
+                String name = resolveDeviceName(result);
+                if (!matchesPrefix(name, activeNamePrefix)) {
                     return;
                 }
                 scanResults.put(device.getAddress(), result);
+            }
+
+            @Override
+            public void onScanFailed(int errorCode) {
+                if (activeScanCall != null) {
+                    activeScanCall.reject("Scan failed: " + errorCode);
+                    activeScanCall = null;
+                }
             }
         };
 
@@ -261,6 +269,13 @@ public class BleBridgePlugin extends Plugin {
             call.reject("Notify characteristic not found.");
             return;
         }
+        int props = characteristic.getProperties();
+        boolean canNotify = (props & BluetoothGattCharacteristic.PROPERTY_NOTIFY) != 0;
+        boolean canIndicate = (props & BluetoothGattCharacteristic.PROPERTY_INDICATE) != 0;
+        if (!canNotify && !canIndicate) {
+            call.reject("Characteristic does not support notify or indicate.");
+            return;
+        }
         boolean notified = bluetoothGatt.setCharacteristicNotification(characteristic, true);
         if (!notified) {
             call.reject("setCharacteristicNotification failed.");
@@ -271,7 +286,11 @@ public class BleBridgePlugin extends Plugin {
             call.reject("CCCD descriptor not found.");
             return;
         }
-        descriptor.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE);
+        descriptor.setValue(
+            canNotify
+                ? BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+                : BluetoothGattDescriptor.ENABLE_INDICATION_VALUE
+        );
         subscribeCall = call;
         if (!bluetoothGatt.writeDescriptor(descriptor)) {
             subscribeCall = null;
@@ -364,7 +383,7 @@ public class BleBridgePlugin extends Plugin {
             }
             JSObject item = new JSObject();
             item.put("deviceId", device.getAddress());
-            item.put("name", device.getName() == null ? "Unknown" : device.getName());
+            item.put("name", resolveDeviceName(result));
             item.put("rssi", result.getRssi());
             devices.put(item);
         }
@@ -443,6 +462,27 @@ public class BleBridgePlugin extends Plugin {
         return props;
     }
 
+    private String resolveDeviceName(ScanResult result) {
+        BluetoothDevice device = result.getDevice();
+        if (device != null && !TextUtils.isEmpty(device.getName())) {
+            return device.getName();
+        }
+        if (result.getScanRecord() != null && !TextUtils.isEmpty(result.getScanRecord().getDeviceName())) {
+            return result.getScanRecord().getDeviceName();
+        }
+        return "Unknown";
+    }
+
+    private boolean matchesPrefix(String name, String prefix) {
+        if (TextUtils.isEmpty(prefix)) {
+            return true;
+        }
+        if (TextUtils.isEmpty(name)) {
+            return false;
+        }
+        return name.toLowerCase(Locale.US).startsWith(prefix.toLowerCase(Locale.US));
+    }
+
     private byte[] hexToBytes(String raw) {
         String normalized = raw == null ? "" : raw.replaceAll("[^0-9a-fA-F]", "");
         if (normalized.length() == 0 || normalized.length() % 2 != 0) {
@@ -477,4 +517,3 @@ public class BleBridgePlugin extends Plugin {
         }
     }
 }
-

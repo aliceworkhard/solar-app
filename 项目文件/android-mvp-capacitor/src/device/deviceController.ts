@@ -10,11 +10,21 @@ const PROFILE = {
   namePrefix: "AC632N",
   serviceUUID: "0000fff0-0000-1000-8000-00805f9b34fb",
   writeUUID: "0000fff1-0000-1000-8000-00805f9b34fb",
-  notifyUUID: "0000fff2-0000-1000-8000-00805f9b34fb"
+  notifyUUID: "0000fff2-0000-1000-8000-00805f9b34fb",
+  notifyUUIDCandidates: [
+    "0000fff2-0000-1000-8000-00805f9b34fb",
+    "0000fff3-0000-1000-8000-00805f9b34fb"
+  ]
 } as const;
 
 type PendingResolver = {
   resolve: (value: string) => void;
+  reject: (reason?: unknown) => void;
+  timer: ReturnType<typeof setTimeout>;
+};
+
+type PendingAnyResolver = {
+  resolve: (packetHex: string) => void;
   reject: (reason?: unknown) => void;
   timer: ReturnType<typeof setTimeout>;
 };
@@ -31,7 +41,11 @@ export class DeviceController {
   private logs: LogEntry[] = [];
   private nextLogId = 1;
   private currentWriteType: WriteType = "write";
+  private currentWriteUUID: string = PROFILE.writeUUID;
+  private currentNotifyUUID: string = PROFILE.notifyUUID;
   private currentDeviceId = "";
+  private gattMap: GattMap | null = null;
+  private pendingAnyNotify: PendingAnyResolver | null = null;
 
   private status: DeviceStatus = {
     connected: false,
@@ -44,31 +58,29 @@ export class DeviceController {
 
   async scan(): Promise<DeviceBrief[]> {
     this.addLog("info", "Start BLE scan");
-    return this.ble.scan(PROFILE.namePrefix);
+    let devices = await this.ble.scan(PROFILE.namePrefix);
+    if (!devices.length && PROFILE.namePrefix) {
+      this.addLog("warn", `No devices matched prefix=${PROFILE.namePrefix}, retrying without filter`);
+      devices = await this.ble.scan("");
+    }
+    this.addLog("info", `Scan result count=${devices.length}`);
+    return devices;
   }
 
   async connectAndPrepare(deviceId: string): Promise<GattMap> {
     this.currentDeviceId = deviceId;
     this.addLog("info", `Connect ${deviceId}`);
+    this.attachListeners();
     await this.ble.connect(deviceId);
     const map = await this.ble.discover(deviceId);
-    this.resolveWriteType(map);
-    await this.ble.subscribe(deviceId, PROFILE.notifyUUID);
-    this.addLog("info", `Subscribed notify ${PROFILE.notifyUUID}`);
-
-    if (this.notifyUnsubscribe) {
-      this.notifyUnsubscribe();
-    }
-    this.notifyUnsubscribe = this.ble.onNotify((packetHex) => {
-      this.handleIncoming(packetHex);
-    });
-
-    if (this.connUnsubscribe) {
-      this.connUnsubscribe();
-    }
-    this.connUnsubscribe = this.ble.onConnectionState((state, reason) => {
-      this.handleConnectionEvent(state, reason);
-    });
+    this.gattMap = map;
+    this.addGattMapLog(map);
+    this.currentWriteUUID = this.resolveWriteUUID(map, this.currentWriteUUID);
+    this.resolveWriteType(map, this.currentWriteUUID);
+    this.currentNotifyUUID = this.resolveNotifyUUID(map, this.currentNotifyUUID);
+    await this.ble.subscribe(deviceId, this.currentNotifyUUID);
+    this.addLog("info", `Subscribed notify ${this.currentNotifyUUID}`);
+    this.addLog("info", `Selected writeUUID=${this.currentWriteUUID}`);
 
     this.mergeStatus({ connected: true, lastUpdatedAt: Date.now() });
     return map;
@@ -84,6 +96,14 @@ export class DeviceController {
       lastUpdatedAt: Date.now()
     });
     this.currentDeviceId = "";
+    this.currentWriteUUID = PROFILE.writeUUID;
+    this.currentNotifyUUID = PROFILE.notifyUUID;
+    this.gattMap = null;
+    if (this.pendingAnyNotify) {
+      clearTimeout(this.pendingAnyNotify.timer);
+      this.pendingAnyNotify.reject(new Error("Disconnected."));
+      this.pendingAnyNotify = null;
+    }
     this.addLog("info", "Disconnected");
   }
 
@@ -123,7 +143,39 @@ export class DeviceController {
       throw new Error("HEX is empty.");
     }
     this.addLog("tx", spacedHex(normalized));
-    await this.ble.write(this.currentDeviceId, PROFILE.writeUUID, normalized, writeType);
+    await this.ble.write(this.currentDeviceId, this.currentWriteUUID, normalized, writeType);
+  }
+
+  async sendRawHexAndWait(hex: string, writeType: WriteType, timeoutMs = 2000): Promise<string> {
+    if (!this.currentDeviceId) {
+      throw new Error("No active device.");
+    }
+    if (this.pendingAnyNotify) {
+      throw new Error("Another raw waiting task is in progress.");
+    }
+    const normalized = normalizeHex(hex);
+    if (!normalized) {
+      throw new Error("HEX is empty.");
+    }
+    let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+    const waiter = new Promise<string>((resolve, reject) => {
+      timeoutHandle = setTimeout(() => {
+        this.pendingAnyNotify = null;
+        reject(new Error("Timeout waiting raw notify packet"));
+      }, timeoutMs);
+      this.pendingAnyNotify = { resolve, reject, timer: timeoutHandle };
+    });
+    this.addLog("tx", spacedHex(normalized));
+    try {
+      await this.ble.write(this.currentDeviceId, this.currentWriteUUID, normalized, writeType);
+      return await waiter;
+    } catch (error) {
+      if (timeoutHandle) {
+        clearTimeout(timeoutHandle);
+      }
+      this.pendingAnyNotify = null;
+      throw error;
+    }
   }
 
   getStatus(): DeviceStatus {
@@ -136,6 +188,38 @@ export class DeviceController {
 
   getWriteType(): WriteType {
     return this.currentWriteType;
+  }
+
+  getSelectedChannels(): { writeUUID: string; notifyUUID: string } {
+    return {
+      writeUUID: this.currentWriteUUID,
+      notifyUUID: this.currentNotifyUUID
+    };
+  }
+
+  getChannelCandidates(): { writeUUIDs: string[]; notifyUUIDs: string[] } {
+    if (!this.gattMap) {
+      return { writeUUIDs: [], notifyUUIDs: [] };
+    }
+    return this.collectChannelCandidates(this.gattMap);
+  }
+
+  async applyChannelSelection(writeUUID: string, notifyUUID: string): Promise<void> {
+    const nextWrite = writeUUID.toLowerCase();
+    const nextNotify = notifyUUID.toLowerCase();
+    if (!nextWrite || !nextNotify) {
+      throw new Error("writeUUID and notifyUUID are required.");
+    }
+    this.currentWriteUUID = nextWrite;
+    this.currentNotifyUUID = nextNotify;
+    if (this.gattMap) {
+      this.resolveWriteType(this.gattMap, this.currentWriteUUID);
+    }
+    if (this.currentDeviceId) {
+      await this.ble.subscribe(this.currentDeviceId, this.currentNotifyUUID);
+      this.addLog("info", `Subscribed notify ${this.currentNotifyUUID}`);
+    }
+    this.addLog("info", `Selected writeUUID=${this.currentWriteUUID}`);
   }
 
   onStatusChange(listener: (status: DeviceStatus) => void): Unsubscribe {
@@ -201,7 +285,7 @@ export class DeviceController {
       this.pendingResponse.set(expectedResponse, { resolve, reject, timer });
     });
     this.addLog("tx", spacedHex(payloadHex));
-    await this.ble.write(this.currentDeviceId, PROFILE.writeUUID, payloadHex, this.currentWriteType);
+    await this.ble.write(this.currentDeviceId, this.currentWriteUUID, payloadHex, this.currentWriteType);
     return waiter;
   }
 
@@ -211,6 +295,12 @@ export class DeviceController {
       return;
     }
     this.addLog("rx", spacedHex(normalized));
+    if (this.pendingAnyNotify) {
+      clearTimeout(this.pendingAnyNotify.timer);
+      const pendingAny = this.pendingAnyNotify;
+      this.pendingAnyNotify = null;
+      pendingAny.resolve(normalized);
+    }
     const frames = this.frameDecoder.push(normalized);
     for (const frame of frames) {
       const parsed = parseResponse(frame);
@@ -237,13 +327,10 @@ export class DeviceController {
     }
   }
 
-  private resolveWriteType(gattMap: GattMap): void {
+  private resolveWriteType(gattMap: GattMap, writeUUID: string): void {
     for (const service of gattMap.services) {
-      if (service.uuid.toLowerCase() !== PROFILE.serviceUUID) {
-        continue;
-      }
       for (const characteristic of service.characteristics) {
-        if (characteristic.uuid.toLowerCase() !== PROFILE.writeUUID) {
+        if (characteristic.uuid.toLowerCase() !== writeUUID.toLowerCase()) {
           continue;
         }
         if (characteristic.properties.includes("write")) {
@@ -254,6 +341,88 @@ export class DeviceController {
         this.addLog("info", `Detected writeType=${this.currentWriteType}`);
         return;
       }
+    }
+  }
+
+  private resolveWriteUUID(gattMap: GattMap, preferred: string): string {
+    const channels = this.collectChannelCandidates(gattMap);
+    const preferredLower = preferred.toLowerCase();
+    if (channels.writeUUIDs.includes(preferredLower)) {
+      return preferredLower;
+    }
+    const profileDefault = PROFILE.writeUUID.toLowerCase();
+    if (channels.writeUUIDs.includes(profileDefault)) {
+      return profileDefault;
+    }
+    return channels.writeUUIDs[0] ?? profileDefault;
+  }
+
+  private resolveNotifyUUID(gattMap: GattMap, preferred: string): string {
+    const channels = this.collectChannelCandidates(gattMap);
+    const preferredLower = preferred.toLowerCase();
+    if (channels.notifyUUIDs.includes(preferredLower)) {
+      return preferredLower;
+    }
+    for (const candidate of PROFILE.notifyUUIDCandidates) {
+      const candidateLower = candidate.toLowerCase();
+      if (channels.notifyUUIDs.includes(candidateLower)) {
+        return candidateLower;
+      }
+    }
+    return channels.notifyUUIDs[0] ?? PROFILE.notifyUUID;
+  }
+
+  private canNotify(properties: string[]): boolean {
+    return properties.includes("notify") || properties.includes("indicate");
+  }
+
+  private canWrite(properties: string[]): boolean {
+    return properties.includes("write") || properties.includes("writeNoResponse");
+  }
+
+  private collectChannelCandidates(gattMap: GattMap): { writeUUIDs: string[]; notifyUUIDs: string[] } {
+    const writeSet = new Set<string>();
+    const notifySet = new Set<string>();
+    for (const service of gattMap.services) {
+      for (const characteristic of service.characteristics) {
+        const uuid = characteristic.uuid.toLowerCase();
+        if (this.canWrite(characteristic.properties)) {
+          writeSet.add(uuid);
+        }
+        if (this.canNotify(characteristic.properties)) {
+          notifySet.add(uuid);
+        }
+      }
+    }
+    return {
+      writeUUIDs: Array.from(writeSet),
+      notifyUUIDs: Array.from(notifySet)
+    };
+  }
+
+  private attachListeners(): void {
+    if (this.notifyUnsubscribe) {
+      this.notifyUnsubscribe();
+    }
+    this.notifyUnsubscribe = this.ble.onNotify((packetHex) => {
+      this.handleIncoming(packetHex);
+    });
+
+    if (this.connUnsubscribe) {
+      this.connUnsubscribe();
+    }
+    this.connUnsubscribe = this.ble.onConnectionState((state, reason) => {
+      this.handleConnectionEvent(state, reason);
+    });
+  }
+
+  private addGattMapLog(gattMap: GattMap): void {
+    this.addLog("info", `GATT discovered services=${gattMap.services.length}`);
+    for (const service of gattMap.services) {
+      const chars = service.characteristics
+        .map((item) => `${item.uuid}[${item.properties.join("/")}]`)
+        .join(", ");
+      this.addLog("info", `${service.uuid} -> ${chars}`);
     }
   }
 

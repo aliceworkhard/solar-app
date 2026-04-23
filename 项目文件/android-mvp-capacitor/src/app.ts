@@ -53,6 +53,7 @@ export class App {
             <div class="toolbar">
               <button class="btn icon" id="scanBtn" title="扫描设备">扫描</button>
               <button class="btn ghost" id="disconnectBtn" title="断开连接">断开</button>
+              <button class="btn ghost" id="debugToggleBtn" title="调试日志">调试</button>
             </div>
             <div class="device-list" id="deviceList"></div>
             <div class="quick-grid">
@@ -71,6 +72,7 @@ export class App {
             <div class="toolbar">
               <button class="btn ghost" id="backBtn">返回</button>
               <div class="chip">写入方式：<span id="writeTypeValue">-</span></div>
+              <button class="btn ghost" id="debugToggleBtn2">调试</button>
             </div>
 
             <div class="control-stack">
@@ -107,12 +109,18 @@ export class App {
               <div class="chip">调试控制台</div>
               <button class="btn ghost" id="debugCloseBtn">关闭</button>
             </div>
+            <div class="uuid-row">
+              <select id="uuidWriteSelect"></select>
+              <select id="uuidNotifySelect"></select>
+              <button class="btn" id="uuidApplyBtn">应用UUID</button>
+            </div>
             <div class="raw-row">
               <input id="rawHexInput" type="text" placeholder="AA5502010000" />
               <select id="rawWriteType">
                 <option value="write">write</option>
                 <option value="writeNoResponse">writeNoResponse</option>
               </select>
+              <label class="chip"><input id="rawWaitAck" type="checkbox" checked /> 等待BLE回包</label>
               <button class="btn" id="rawSendBtn">发送HEX</button>
             </div>
             <pre id="logArea"></pre>
@@ -125,6 +133,7 @@ export class App {
     this.refreshStatus();
     this.refreshDeviceList();
     this.refreshLogs();
+    this.refreshUuidSelectors();
   }
 
   private bindEvents(): void {
@@ -133,6 +142,14 @@ export class App {
     });
     this.byId("disconnectBtn").addEventListener("click", () => {
       void this.disconnectDevice();
+    });
+    this.byId("debugToggleBtn").addEventListener("click", () => {
+      this.debugVisible = !this.debugVisible;
+      this.render();
+    });
+    this.byId("debugToggleBtn2").addEventListener("click", () => {
+      this.debugVisible = !this.debugVisible;
+      this.render();
     });
     this.byId("enterControlBtn").addEventListener("click", () => {
       this.view = "control";
@@ -151,6 +168,9 @@ export class App {
     this.byId("debugCloseBtn").addEventListener("click", () => {
       this.debugVisible = false;
       this.render();
+    });
+    this.byId("uuidApplyBtn").addEventListener("click", () => {
+      void this.handleApplyUuid();
     });
     this.byId("rawSendBtn").addEventListener("click", () => void this.handleRawSend());
 
@@ -191,6 +211,7 @@ export class App {
       await this.controller.connectAndPrepare(device.deviceId);
       this.setResult("连接成功并已订阅通知");
       this.refreshStatus();
+      this.refreshUuidSelectors();
     } catch (error) {
       this.setResult(`连接失败：${this.errorMessage(error)}`);
     }
@@ -201,8 +222,22 @@ export class App {
       await this.controller.disconnect();
       this.setResult("已断开连接");
       this.refreshStatus();
+      this.refreshUuidSelectors();
     } catch (error) {
       this.setResult(`断开失败：${this.errorMessage(error)}`);
+    }
+  }
+
+  private async handleApplyUuid(): Promise<void> {
+    const writeUUID = (this.byId("uuidWriteSelect") as HTMLSelectElement).value;
+    const notifyUUID = (this.byId("uuidNotifySelect") as HTMLSelectElement).value;
+    try {
+      await this.controller.applyChannelSelection(writeUUID, notifyUUID);
+      this.refreshStatus();
+      this.refreshUuidSelectors();
+      this.setResult(`UUID已应用 write=${writeUUID} notify=${notifyUUID}`);
+    } catch (error) {
+      this.setResult(`应用UUID失败：${this.errorMessage(error)}`);
     }
   }
 
@@ -230,9 +265,15 @@ export class App {
   private async handleRawSend(): Promise<void> {
     const hexInput = this.byId("rawHexInput") as HTMLInputElement;
     const writeType = (this.byId("rawWriteType") as HTMLSelectElement).value as "write" | "writeNoResponse";
+    const waitAck = (this.byId("rawWaitAck") as HTMLInputElement).checked;
     try {
+      if (waitAck) {
+        const rxHex = await this.controller.sendRawHexAndWait(hexInput.value, writeType, 2000);
+        this.setResult(`RAW收发成功 TX=${spacedHex(hexInput.value)} RX=${spacedHex(rxHex)}`);
+        return;
+      }
       await this.controller.sendRawHex(hexInput.value, writeType);
-      this.setResult(`RAW发送：${spacedHex(hexInput.value)}`);
+      this.setResult(`RAW已发送 TX=${spacedHex(hexInput.value)}（未等待BLE回包）`);
     } catch (error) {
       this.setResult(`RAW发送失败：${this.errorMessage(error)}`);
     }
@@ -297,6 +338,41 @@ export class App {
       .join("\n");
     logArea.textContent = content || "暂无日志";
     logArea.scrollTop = logArea.scrollHeight;
+  }
+
+  private refreshUuidSelectors(): void {
+    if (!this.root.childElementCount) {
+      return;
+    }
+    const writeSelect = this.byId("uuidWriteSelect") as HTMLSelectElement;
+    const notifySelect = this.byId("uuidNotifySelect") as HTMLSelectElement;
+    const applyBtn = this.byId("uuidApplyBtn") as HTMLButtonElement;
+    const candidates = this.controller.getChannelCandidates();
+    const selected = this.controller.getSelectedChannels();
+
+    this.renderUuidOptions(writeSelect, candidates.writeUUIDs, selected.writeUUID);
+    this.renderUuidOptions(notifySelect, candidates.notifyUUIDs, selected.notifyUUID);
+
+    applyBtn.disabled = !this.status.connected || !candidates.writeUUIDs.length || !candidates.notifyUUIDs.length;
+  }
+
+  private renderUuidOptions(
+    select: HTMLSelectElement,
+    values: string[],
+    selectedValue: string
+  ): void {
+    const normalizedSelected = selectedValue.toLowerCase();
+    const options = values.length
+      ? values
+      : ["(请先连接设备并发现服务)"];
+    select.innerHTML = options
+      .map((item) => `<option value="${item}">${item}</option>`)
+      .join("");
+    if (values.length && values.includes(normalizedSelected)) {
+      select.value = normalizedSelected;
+      return;
+    }
+    select.value = options[0];
   }
 
   private setResult(message: string): void {

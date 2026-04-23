@@ -43,7 +43,9 @@ export class FrameDecoder {
       const crcHigh = frame[frameTotalLen - 1];
       const expected = crc16Modbus(body);
       const actual = (crcHigh << 8) | crcLow;
-      if (expected !== actual) {
+      // Vendor firmware may return fixed 00 00 trailer instead of CRC16.
+      const acceptedByVendorTrailer = actual === 0x0000;
+      if (expected !== actual && !acceptedByVendorTrailer) {
         continue;
       }
       const command = body[1];
@@ -67,4 +69,3 @@ export class FrameDecoder {
     }
   }
 }
-

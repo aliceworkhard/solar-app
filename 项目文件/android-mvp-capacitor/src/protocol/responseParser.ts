@@ -57,10 +57,30 @@ export function parseResponse(frame: DecodedFrame): ParsedResponse {
       };
     }
     case 0x90: {
-      const state = payload[0] === 0x01;
+      const code = payload[0] ?? 0x00;
+      if (code === 0x01) {
+        return {
+          command: frame.command,
+          summary: "powerAck on",
+          statusPatch: {
+            connected: true,
+            lastUpdatedAt: Date.now()
+          }
+        };
+      }
+      if (code === 0x00) {
+        return {
+          command: frame.command,
+          summary: "powerAck off",
+          statusPatch: {
+            connected: true,
+            lastUpdatedAt: Date.now()
+          }
+        };
+      }
       return {
         command: frame.command,
-        summary: `powerAck ${state ? "on" : "off"}`,
+        summary: `powerAck ack code=0x${code.toString(16).toUpperCase().padStart(2, "0")}`,
         statusPatch: {
           connected: true,
           lastUpdatedAt: Date.now()
@@ -86,4 +106,3 @@ export function parseResponse(frame: DecodedFrame): ParsedResponse {
       };
   }
 }
-
