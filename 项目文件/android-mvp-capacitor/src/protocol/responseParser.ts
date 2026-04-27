@@ -24,21 +24,40 @@ function word(high = 0, low = 0): number {
   return ((high & 0xff) << 8) | (low & 0xff);
 }
 
+function fixedNumber(value: number, digits: number): number {
+  return Number(value.toFixed(digits));
+}
+
 export function parseResponse(frame: DecodedFrame): ParsedResponse {
   const payload = frame.payload;
   switch (frame.command) {
     case 0xe1: {
+      if (payload.length < 8) {
+        return {
+          command: frame.command,
+          summary: `status payload too short bytes=${payload.length}`
+        };
+      }
       const workMinutes = (payload[0] ?? 0) * 5;
-      const batteryVoltage = word(payload[1], payload[2]) * 0.00782;
-      const loadCurrent = word(payload[3], payload[4]) * 0.028256;
+      const batteryVoltage = fixedNumber(word(payload[1], payload[2]) * 0.00782, 2);
+      const loadCurrent = fixedNumber(word(payload[3], payload[4]) * 0.028256, 2);
       const brightness = Math.min(100, Math.round(((payload[5] ?? 0) / 255) * 100));
-      const solarVoltage = word(payload[6], payload[7]) * 0.062366;
+      const solarVoltage = fixedNumber(word(payload[6], payload[7]) * 0.062366, 1);
+      const statusExtraRaw = payload[8];
+      const extraSummary = statusExtraRaw == null
+        ? ""
+        : ` extra=0x${statusExtraRaw.toString(16).toUpperCase().padStart(2, "0")}`;
       return {
         command: frame.command,
-        summary: `status work=${workMinutes}min brightness=${brightness}% battery=${batteryVoltage.toFixed(2)}V current=${loadCurrent.toFixed(2)}A solar=${solarVoltage.toFixed(1)}V`,
+        summary: `status work=${workMinutes}min brightness=${brightness}% battery=${batteryVoltage.toFixed(2)}V current=${loadCurrent.toFixed(2)}A solar=${solarVoltage.toFixed(1)}V${extraSummary}`,
         statusPatch: {
+          workMinutes,
           power: brightness,
-          battery: Number(batteryVoltage.toFixed(2)),
+          battery: batteryVoltage,
+          batteryVoltage,
+          loadCurrentAmp: loadCurrent,
+          solarVoltage,
+          ...(statusExtraRaw == null ? {} : { statusExtraRaw }),
           lastUpdatedAt: Date.now()
         }
       };

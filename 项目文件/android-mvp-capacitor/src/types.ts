@@ -47,6 +47,11 @@ export interface DeviceStatus {
   mode: string;
   power: number;
   battery?: number;
+  batteryVoltage?: number;
+  workMinutes?: number;
+  loadCurrentAmp?: number;
+  solarVoltage?: number;
+  statusExtraRaw?: number;
   fwVersion?: string;
   lastUpdatedAt: number;
 }

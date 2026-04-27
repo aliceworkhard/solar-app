@@ -15,14 +15,23 @@
 
 - [ ] T-001 补齐 20 次真机性能采样
   - 优先级：P0
+  - 状态：用户反馈暂无明显问题；待补正式采样记录/P50/P90 后归档
   - 涉及文件：`项目文件/通信参数确认表.md`
-  - 验收标准：记录扫描首包耗时、连接到 `ready` 耗时、是否 fallback、失败原因，并计算 P50/P90。
+  - 验收标准：记录 20 次扫描首包耗时、连接到 `ready` 耗时、是否 fallback、失败原因，并计算 P50/P90；无真实样本时只能标记阻塞，不伪造结果。
 
 - [ ] T-002 复测 5 条 MVP 命令
   - 优先级：P0
+  - 状态：用户反馈暂无明显问题；待补 5 条命令各 10 次正式复测记录后归档
   - 涉及文件：`项目文件/最小命令集表.md`
   - 前置状态：App 已接入最新最小命令集，读状态命令为 `FF CE 06 00 0E 00 00 30 11`。
   - 验收标准：开/关、增加亮度、降低亮度、读参数、读状态各执行 10 次，记录是否有 notify、是否更新 UI、失败表现。
+
+- [ ] T-011 基于 HTML/图片收敛两页 MVP UI
+  - 优先级：P0
+  - 状态：Proposed（方案已写，等待确认后实施）
+  - 涉及文件：`HTML参考/app.html`、`mppt_app_design_assets/`、`项目文件/android-mvp-capacitor/src/app.ts`、`项目文件/android-mvp-capacitor/src/styles.css`、`项目文件/android-mvp-capacitor/src/app.test.ts`、`项目文件/android-mvp-capacitor/public/assets/ui/`
+  - 处理口径：吸收参考稿的信息层级与视觉语言，落到当前设备首页 + 设备详情控制页；不照搬 OTA、场景页、我的页和未接入协议的完整参数设置。
+  - 验收标准：首页和控制页按参考稿重构为真实 DOM UI；透明背景 MPPT 设备图接入；5 条 MVP 命令入口保留且反馈明确；调试台隐藏保留；不新增假功能；`npm.cmd test`、`npm.cmd run build` 通过；移动端截图检查无文字/按钮重叠。
 
 ## Next
 
@@ -67,6 +76,8 @@
 
 ## Recently Done
 
+- [x] T-012 读状态回传可读化：电池显示单位改为 `V`；`E1` 状态回传的工作时长、亮度、电池电压、电池电流、太阳能电压已转为结构化可读状态；短包不更新业务状态；测试与构建通过。
+- [x] T-013 Skill 白名单二次筛选与安装：已安装 `kb-retriever`、`web-design-engineer`、`gpt-image-2`、`requesting-code-review`、`receiving-code-review`、`security-best-practices`；已更新白名单与安装日志；`gpt-image-2` 作为图片工作流首选，但未覆盖系统 `.system/imagegen`。
 - [x] T-009 建立先方案后修改流程：已新增项目级 skill、流程文档、计划模板、审批模板，并接入 `AGENTS.md`。
 - [x] BLE 主链路已跑通：可连接、可发送、可接收。
 - [x] 写入方式已锁定为 `write`。

@@ -38,11 +38,12 @@
 
 ## Current Verification State
 
-- `npm.cmd test`：最近一次通过。
+- `npm.cmd test`：最近一次通过，5 个测试文件、27 个测试通过。
 - T-003 响应等待策略：5 条 MVP 命令默认不等待回包；显式 `waitForResponse=true` 路径已补单测，写入失败会清理 pending 后重试。
 - T-004 两页业务 UI：主页扫描/快连/连接反馈可见，控制页 5 个 RF 命令一一映射到 `DeviceController`，调试台隐藏保留。
 - T-002 前置接入：App 面向方法已锁定 5 条最小命令集 HEX，并有 `CommandBuilder` 与 `DeviceController` 写入链路测试覆盖。
 - T-009 持续发现：扫描按钮可开始/停止，默认每 5 秒补扫；列表按 MAC/deviceId 区分同名设备，新设备追加，已连接设备不清除。
+- T-012 读状态可读化：`E1` 回传会解析工作时长、亮度、电池电压、电池电流、太阳能电压；电池 UI 单位为 `V`，电流为 `A`，太阳能电压为 `V`，短包不会更新业务状态。
 - `npm.cmd run build`：最近一次通过。
 - Gradle 终端构建：当前环境缺 `JAVA_HOME`，需在本机 Android Studio 或配置 JDK 后复验。
 - Android 真机：BLE 已能发送和接收，仍需补 20 次性能采样和命令复测记录。
@@ -80,3 +81,8 @@
 - 开/关命令在协议中是单一 `0x0A` 控制命令，是否能区分开机/关机仍待真机确认。
 - Debug APK 的常规 Gradle 命令验证需要补 `JAVA_HOME`。
 - 多 agent 框架已建立，但还未经过一次真实多人协作演练。
+
+## Skill Baseline
+
+- 2026-04-27 installed additional global skills: `kb-retriever`, `web-design-engineer`, `gpt-image-2`, `requesting-code-review`, `receiving-code-review`, `security-best-practices`.
+- `gpt-image-2` is the preferred image prompt/workflow skill for this project, but system `.system/imagegen` remains installed as the host image tool entry.

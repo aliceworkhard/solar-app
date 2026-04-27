@@ -3,6 +3,10 @@ import {
   BUSINESS_COMMANDS,
   DEVICE_STALE_AFTER_MS,
   DISCOVERY_INTERVAL_MS,
+  formatBatteryVoltage,
+  formatLoadCurrent,
+  formatSolarVoltage,
+  formatWorkMinutes,
   isControlReady,
   mergeDiscoveryDevices
 } from "./app";
@@ -44,6 +48,23 @@ describe("App UI command model", () => {
     expect(isControlReady(status("connecting"))).toBe(false);
     expect(isControlReady(status("subscribing"))).toBe(false);
     expect(isControlReady(status("error"))).toBe(false);
+  });
+});
+
+describe("App status formatting", () => {
+  it("formats read-status effective values with physical units", () => {
+    const readableStatus: DeviceStatus = {
+      ...status("ready"),
+      workMinutes: 75,
+      batteryVoltage: 12.35,
+      loadCurrentAmp: 1.23,
+      solarVoltage: 18.4
+    };
+
+    expect(formatWorkMinutes(readableStatus)).toBe("1h 15min");
+    expect(formatBatteryVoltage(readableStatus)).toBe("12.35V");
+    expect(formatLoadCurrent(readableStatus)).toBe("1.23A");
+    expect(formatSolarVoltage(readableStatus)).toBe("18.4V");
   });
 });
 

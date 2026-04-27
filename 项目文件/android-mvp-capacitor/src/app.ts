@@ -55,6 +55,38 @@ export function isControlReady(status: DeviceStatus): boolean {
   return status.connectionState === "ready";
 }
 
+function formatFixedUnit(value: number | undefined, digits: number, unit: string): string {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return "-";
+  }
+  return `${value.toFixed(digits)}${unit}`;
+}
+
+export function formatWorkMinutes(status: DeviceStatus): string {
+  const minutes = status.workMinutes;
+  if (typeof minutes !== "number" || !Number.isFinite(minutes)) {
+    return "-";
+  }
+  if (minutes < 60) {
+    return `${minutes}min`;
+  }
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+  return remainingMinutes ? `${hours}h ${remainingMinutes}min` : `${hours}h`;
+}
+
+export function formatBatteryVoltage(status: DeviceStatus): string {
+  return formatFixedUnit(status.batteryVoltage, 2, "V");
+}
+
+export function formatLoadCurrent(status: DeviceStatus): string {
+  return formatFixedUnit(status.loadCurrentAmp, 2, "A");
+}
+
+export function formatSolarVoltage(status: DeviceStatus): string {
+  return formatFixedUnit(status.solarVoltage, 1, "V");
+}
+
 export const DISCOVERY_INTERVAL_MS = 5000;
 export const DEVICE_STALE_AFTER_MS = 30000;
 export const DEVICE_FORGET_AFTER_MS = 60000;
@@ -188,6 +220,9 @@ export class App {
               <div class="kv"><span>模式</span><strong id="modeValue">-</strong></div>
               <div class="kv"><span>功率</span><strong id="powerValue">-</strong></div>
               <div class="kv"><span>电池</span><strong id="batteryValue">-</strong></div>
+              <div class="kv"><span>工作时长</span><strong id="workTimeValue">-</strong></div>
+              <div class="kv"><span>负载电流</span><strong id="loadCurrentValue">-</strong></div>
+              <div class="kv"><span>太阳能</span><strong id="solarVoltageValue">-</strong></div>
               <div class="kv"><span>固件</span><strong id="fwValue">-</strong></div>
             </div>
             <button class="btn primary wide" id="enterControlBtn" disabled>进入控制页</button>
@@ -207,6 +242,9 @@ export class App {
                 <div><span>当前模式</span><strong id="controlModeValue">-</strong></div>
                 <div><span>当前功率</span><strong id="controlPowerValue">-</strong></div>
                 <div><span>电池</span><strong id="controlBatteryValue">-</strong></div>
+                <div><span>工作时长</span><strong id="controlWorkTimeValue">-</strong></div>
+                <div><span>负载电流</span><strong id="controlLoadCurrentValue">-</strong></div>
+                <div><span>太阳能</span><strong id="controlSolarVoltageValue">-</strong></div>
               </div>
 
               <div class="seg" id="modeSeg">
@@ -585,11 +623,17 @@ export class App {
     this.byId("connStageChip").textContent = `连接阶段：${this.status.connectionState}`;
     this.byId("modeValue").textContent = this.status.mode;
     this.byId("powerValue").textContent = `${this.status.power}%`;
-    this.byId("batteryValue").textContent = this.status.battery == null ? "-" : `${this.status.battery}%`;
+    this.byId("batteryValue").textContent = formatBatteryVoltage(this.status);
+    this.byId("workTimeValue").textContent = formatWorkMinutes(this.status);
+    this.byId("loadCurrentValue").textContent = formatLoadCurrent(this.status);
+    this.byId("solarVoltageValue").textContent = formatSolarVoltage(this.status);
     this.byId("fwValue").textContent = this.status.fwVersion || "-";
     this.byId("controlModeValue").textContent = this.status.mode;
     this.byId("controlPowerValue").textContent = `${this.status.power}%`;
-    this.byId("controlBatteryValue").textContent = this.status.battery == null ? "-" : `${this.status.battery}%`;
+    this.byId("controlBatteryValue").textContent = formatBatteryVoltage(this.status);
+    this.byId("controlWorkTimeValue").textContent = formatWorkMinutes(this.status);
+    this.byId("controlLoadCurrentValue").textContent = formatLoadCurrent(this.status);
+    this.byId("controlSolarVoltageValue").textContent = formatSolarVoltage(this.status);
     this.byId("writeTypeValue").textContent = this.controller.getWriteType();
     const modeButtons = this.root.querySelectorAll<HTMLButtonElement>("#modeSeg .seg-btn");
     modeButtons.forEach((button) => {
