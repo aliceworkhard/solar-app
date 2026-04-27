@@ -29,12 +29,15 @@
 
 ## Current Best Next Step
 
-优先处理 `todo.md` 的 `T-001` 和 `T-002`：
+当前可以进入 `T-011` 两页 UI 收敛准备，但不要扩大协议或 BLE 范围。
 
-- `T-001`：补 20 次真机扫描/连接性能采样。
-- `T-002`：复测 5 条 MVP 命令。
+已知前提：
 
-原因：这两个任务会决定协议和 UI 下一步是否需要调整。没有实测数据时，不要提前扩大 UI 或协议字段。
+- `T-001` / `T-002` 已有可行性冒烟测试结论：使用 vivo X300 Pro 测试，连接、收发、5 条 MVP 命令均未发现传输错误。
+- 正式量化验收仍需后补：`T-001` 的 20 次扫描/连接 P50/P90，以及 `T-002` 的 5 条命令各 10 次逐条记录。
+- 可行性记录：`.agent/reports/2026-04-27-feasibility-smoke-test.md`。
+- 正式补测模板：`.agent/reports/templates/`。
+- UI 接力任务包：`.agent/tasks/active/T-011-ui-convergence.md`。
 
 ## Plan First Gate
 

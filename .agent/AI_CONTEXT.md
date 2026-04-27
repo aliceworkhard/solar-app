@@ -44,9 +44,10 @@
 - T-002 前置接入：App 面向方法已锁定 5 条最小命令集 HEX，并有 `CommandBuilder` 与 `DeviceController` 写入链路测试覆盖。
 - T-009 持续发现：扫描按钮可开始/停止，默认每 5 秒补扫；列表按 MAC/deviceId 区分同名设备，新设备追加，已连接设备不清除。
 - T-012 读状态可读化：`E1` 回传会解析工作时长、亮度、电池电压、电池电流、太阳能电压；电池 UI 单位为 `V`，电流为 `A`，太阳能电压为 `V`，短包不会更新业务状态。
+- T-001/T-002 可行性冒烟测试：用户使用 vivo X300 Pro 测试，设备连接、发送、接收和 5 条 MVP 命令执行均未发现传输错误；该结论不是完整 20 次/P50/P90 或逐条 10 次验收。
 - `npm.cmd run build`：最近一次通过。
 - Gradle 终端构建：当前环境缺 `JAVA_HOME`，需在本机 Android Studio 或配置 JDK 后复验。
-- Android 真机：BLE 已能发送和接收，仍需补 20 次性能采样和命令复测记录。
+- Android 真机：BLE 已能发送和接收；正式量化采样和命令逐次复测记录仍需后补。
 
 ## Working Rules
 
@@ -74,8 +75,8 @@
 
 ## Current Open Problems
 
-- 真机 20 次扫描/连接性能采样未补齐。
-- 5 条 MVP 命令的真实设备复测数据未补齐。
+- T-001 20 次扫描/连接性能采样未补齐；当前只有可行性通过结论。
+- T-002 5 条 MVP 命令逐次复测数据未补齐；当前只有可行性通过结论。
 - T-009 持续发现仍需真机验证补扫间隔、过期时间和进入控制页后的低频保活策略。
 - 哪些特定指令稳定有回传仍待真机复测确认；程序默认不等待，仅允许显式标记命令等待。
 - 开/关命令在协议中是单一 `0x0A` 控制命令，是否能区分开机/关机仍待真机确认。
@@ -86,3 +87,15 @@
 
 - 2026-04-27 installed additional global skills: `kb-retriever`, `web-design-engineer`, `gpt-image-2`, `requesting-code-review`, `receiving-code-review`, `security-best-practices`.
 - `gpt-image-2` is the preferred image prompt/workflow skill for this project, but system `.system/imagegen` remains installed as the host image tool entry.
+
+## Feasibility Smoke Test Baseline
+
+- 测试日期：2026-04-27。
+- 测试手机：vivo X300 Pro。
+- 型号：V2502A。
+- Android：16。
+- 硬件版本：MP_0.1。
+- 软件版本：PD2502B_A_16.0.25.5.W10.V000L1。
+- 结论：T-001/T-002 可行性良好，连接、收发和 5 条 MVP 命令执行没有一次出错。
+- 记录文件：`.agent/reports/2026-04-27-feasibility-smoke-test.md`。
+- 正式补测模板：`.agent/reports/templates/`。
