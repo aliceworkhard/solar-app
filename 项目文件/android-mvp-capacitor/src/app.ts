@@ -3,17 +3,143 @@ import { spacedHex } from "./utils/hex";
 import type { DeviceBrief, DeviceStatus, LogEntry } from "./types";
 
 type ViewName = "home" | "control";
+type FeedbackTone = "idle" | "pending" | "success" | "error";
+type BusinessCommandAction =
+  | "readStatus"
+  | "readParams"
+  | "powerToggle"
+  | "brightnessUp"
+  | "brightnessDown";
+
+export interface BusinessCommand {
+  id: string;
+  label: string;
+  description: string;
+  action: BusinessCommandAction;
+}
+
+export const BUSINESS_COMMANDS: BusinessCommand[] = [
+  {
+    id: "readStatusBtn",
+    label: "读状态",
+    description: "状态协议 0xE1",
+    action: "readStatus"
+  },
+  {
+    id: "readParamsBtn",
+    label: "读参数",
+    description: "参数下载 0xB1",
+    action: "readParams"
+  },
+  {
+    id: "powerToggleBtn",
+    label: "开/关",
+    description: "RF 控制 0x0A",
+    action: "powerToggle"
+  },
+  {
+    id: "brightnessUpBtn",
+    label: "增加亮度",
+    description: "RF 控制 0x0B",
+    action: "brightnessUp"
+  },
+  {
+    id: "brightnessDownBtn",
+    label: "降低亮度",
+    description: "RF 控制 0x0C",
+    action: "brightnessDown"
+  }
+];
+
+export function isControlReady(status: DeviceStatus): boolean {
+  return status.connectionState === "ready";
+}
+
+export const DISCOVERY_INTERVAL_MS = 5000;
+export const DEVICE_STALE_AFTER_MS = 30000;
+export const DEVICE_FORGET_AFTER_MS = 60000;
+
+export interface DiscoveredDeviceRecord extends DeviceBrief {
+  firstSeenAt: number;
+  lastSeenAt: number;
+  scanRound: number;
+  isConnected: boolean;
+  isStale: boolean;
+  usedFallback: boolean;
+}
+
+export interface DiscoveryMergeContext {
+  activeDeviceId: string;
+  now: number;
+  scanRound: number;
+  usedFallback: boolean;
+}
+
+export function mergeDiscoveryDevices(
+  currentDevices: DiscoveredDeviceRecord[],
+  incomingDevices: DeviceBrief[],
+  context: DiscoveryMergeContext
+): DiscoveredDeviceRecord[] {
+  const byId = new Map<string, DiscoveredDeviceRecord>();
+  const activeDeviceId = context.activeDeviceId.toLowerCase();
+
+  for (const current of currentDevices) {
+    const isConnected = current.deviceId.toLowerCase() === activeDeviceId;
+    const ageMs = context.now - current.lastSeenAt;
+    if (!isConnected && ageMs > DEVICE_FORGET_AFTER_MS) {
+      continue;
+    }
+    byId.set(current.deviceId, {
+      ...current,
+      isConnected,
+      isStale: !isConnected && ageMs > DEVICE_STALE_AFTER_MS
+    });
+  }
+
+  for (const incoming of incomingDevices) {
+    const previous = byId.get(incoming.deviceId);
+    const isConnected = incoming.deviceId.toLowerCase() === activeDeviceId;
+    byId.set(incoming.deviceId, {
+      deviceId: incoming.deviceId,
+      name: incoming.name || previous?.name || "Unknown",
+      rssi: incoming.rssi,
+      firstSeenAt: previous?.firstSeenAt ?? context.now,
+      lastSeenAt: context.now,
+      scanRound: context.scanRound,
+      isConnected,
+      isStale: false,
+      usedFallback: context.usedFallback
+    });
+  }
+
+  return Array.from(byId.values()).sort((left, right) => {
+    if (left.isConnected !== right.isConnected) {
+      return left.isConnected ? -1 : 1;
+    }
+    if (left.isStale !== right.isStale) {
+      return left.isStale ? 1 : -1;
+    }
+    if (left.rssi !== right.rssi) {
+      return right.rssi - left.rssi;
+    }
+    return right.lastSeenAt - left.lastSeenAt;
+  });
+}
 
 export class App {
   private readonly root: HTMLElement;
   private readonly controller: DeviceController;
-  private devices: DeviceBrief[] = [];
+  private devices: DiscoveredDeviceRecord[] = [];
   private status: DeviceStatus;
   private logs: LogEntry[] = [];
   private activeDeviceId = "";
   private view: ViewName = "home";
   private hiddenTapCount = 0;
   private debugVisible = false;
+  private discoveryActive = false;
+  private discoveryScanInFlight = false;
+  private discoveryTimer: ReturnType<typeof setTimeout> | null = null;
+  private discoveryRound = 0;
 
   constructor(root: HTMLElement, controller: DeviceController) {
     this.root = root;
@@ -39,11 +165,12 @@ export class App {
       <div class="shell">
         <header class="shell-header">
           <div class="brand" id="brandTrigger">
-            <div class="brand-kicker">Solar BLE</div>
-            <h1>MPPT Controller</h1>
+            <div class="brand-kicker">Solar Remote</div>
+            <h1>太阳能遥控器</h1>
           </div>
           <div class="conn-badge" id="connBadge">未连接</div>
         </header>
+        <div class="feedback-bar" id="feedbackBar" role="status" aria-live="polite">等待操作</div>
 
         <main>
           <section class="panel ${this.view === "home" ? "active" : ""}" id="homePanel">
@@ -51,10 +178,9 @@ export class App {
               <img src="/assets/ui/01_device_home_page.png" alt="home reference" />
             </div>
             <div class="toolbar">
-              <button class="btn icon" id="scanBtn" title="扫描设备">扫描</button>
-              <button class="btn ghost" id="quickConnectBtn" title="快速连接">快连</button>
+              <button class="btn primary icon" id="scanBtn" title="持续发现设备">扫描设备</button>
+              <button class="btn ghost" id="quickConnectBtn" title="快速连接">快连最近</button>
               <button class="btn ghost" id="disconnectBtn" title="断开连接">断开</button>
-              <button class="btn ghost" id="debugToggleBtn" title="调试日志">调试</button>
             </div>
             <div class="chip stage-chip" id="connStageChip">连接阶段：idle</div>
             <div class="device-list" id="deviceList"></div>
@@ -74,10 +200,15 @@ export class App {
             <div class="toolbar">
               <button class="btn ghost" id="backBtn">返回</button>
               <div class="chip">写入方式：<span id="writeTypeValue">-</span></div>
-              <button class="btn ghost" id="debugToggleBtn2">调试</button>
             </div>
 
             <div class="control-stack">
+              <div class="status-slab">
+                <div><span>当前模式</span><strong id="controlModeValue">-</strong></div>
+                <div><span>当前功率</span><strong id="controlPowerValue">-</strong></div>
+                <div><span>电池</span><strong id="controlBatteryValue">-</strong></div>
+              </div>
+
               <div class="seg" id="modeSeg">
                 <button data-mode="radar" class="seg-btn">雷达</button>
                 <button data-mode="time" class="seg-btn">时控</button>
@@ -91,18 +222,16 @@ export class App {
               </div>
 
               <div class="command-grid">
-                <button class="btn" id="readStatusBtn">读取状态</button>
-                <button class="btn" id="readVersionBtn">读取版本</button>
-                <button class="btn" id="powerOnBtn">开机</button>
-                <button class="btn" id="powerOffBtn">关机</button>
+                ${BUSINESS_COMMANDS.map(
+                  (command) => `
+                    <button class="btn command-btn" id="${command.id}" data-action="${command.action}">
+                      <span>${command.label}</span>
+                      <small>${command.description}</small>
+                    </button>
+                  `
+                ).join("")}
               </div>
-
-              <div class="param-row">
-                <input id="paramIdInput" type="number" value="1" min="0" max="255" />
-                <input id="paramValueInput" type="number" value="30" min="0" max="100" />
-                <button class="btn" id="setParamBtn">设置参数</button>
-              </div>
-              <div class="result" id="resultArea">等待操作</div>
+              <div class="result result-live" id="resultArea">等待操作</div>
             </div>
           </section>
 
@@ -134,11 +263,12 @@ export class App {
     this.refreshDeviceList();
     this.refreshLogs();
     this.refreshUuidSelectors();
+    this.refreshScanControls();
   }
 
   private bindEvents(): void {
     this.byId("scanBtn").addEventListener("click", () => {
-      void this.scanDevices();
+      void this.toggleContinuousDiscovery();
     });
     this.byId("quickConnectBtn").addEventListener("click", () => {
       void this.quickConnectPreferred();
@@ -146,15 +276,8 @@ export class App {
     this.byId("disconnectBtn").addEventListener("click", () => {
       void this.disconnectDevice();
     });
-    this.byId("debugToggleBtn").addEventListener("click", () => {
-      this.debugVisible = !this.debugVisible;
-      this.render();
-    });
-    this.byId("debugToggleBtn2").addEventListener("click", () => {
-      this.debugVisible = !this.debugVisible;
-      this.render();
-    });
     this.byId("enterControlBtn").addEventListener("click", () => {
+      this.stopContinuousDiscovery("已进入控制页，持续发现已暂停");
       this.view = "control";
       this.render();
     });
@@ -162,11 +285,11 @@ export class App {
       this.view = "home";
       this.render();
     });
-    this.byId("readStatusBtn").addEventListener("click", () => void this.handleAction(() => this.controller.readStatus()));
-    this.byId("readVersionBtn").addEventListener("click", () => void this.handleAction(() => this.controller.readVersion()));
-    this.byId("powerOnBtn").addEventListener("click", () => void this.handleAction(() => this.controller.powerOn()));
-    this.byId("powerOffBtn").addEventListener("click", () => void this.handleAction(() => this.controller.powerOff()));
-    this.byId("setParamBtn").addEventListener("click", () => void this.handleSetParam());
+    for (const command of BUSINESS_COMMANDS) {
+      this.byId(command.id).addEventListener("click", () => {
+        void this.handleAction(command, () => this.controller[command.action]());
+      });
+    }
     this.byId("brandTrigger").addEventListener("click", () => this.toggleDebugByTap());
     this.byId("debugCloseBtn").addEventListener("click", () => {
       this.debugVisible = false;
@@ -181,7 +304,6 @@ export class App {
     const sliderValue = this.byId("powerSliderValue");
     slider.addEventListener("input", () => {
       sliderValue.textContent = `${slider.value}%`;
-      (this.byId("paramValueInput") as HTMLInputElement).value = slider.value;
     });
 
     const modeButtons = this.root.querySelectorAll<HTMLButtonElement>("#modeSeg .seg-btn");
@@ -196,86 +318,187 @@ export class App {
     });
   }
 
-  private async scanDevices(): Promise<void> {
+  private async toggleContinuousDiscovery(): Promise<void> {
+    if (this.discoveryActive) {
+      this.stopContinuousDiscovery("已停止持续发现");
+      return;
+    }
+    this.discoveryActive = true;
+    this.discoveryRound = 0;
+    this.refreshScanControls();
+    await this.runDiscoveryRound();
+  }
+
+  private stopContinuousDiscovery(message?: string): void {
+    this.discoveryActive = false;
+    if (this.discoveryTimer) {
+      clearTimeout(this.discoveryTimer);
+      this.discoveryTimer = null;
+    }
+    this.refreshScanControls();
+    if (message) {
+      this.setResult(message, "idle");
+    }
+  }
+
+  private async runDiscoveryRound(): Promise<void> {
+    if (!this.discoveryActive || this.discoveryScanInFlight) {
+      return;
+    }
+    if (this.shouldPauseDiscoveryRound()) {
+      this.setResult("BLE 操作中，下一轮持续发现已顺延", "pending");
+      this.scheduleNextDiscoveryRound();
+      return;
+    }
+
+    this.discoveryScanInFlight = true;
+    this.discoveryRound += 1;
+    const round = this.discoveryRound;
+    let roundUsedFallback = false;
+    this.refreshScanControls();
+
     try {
-      this.setResult("扫描中...");
-      this.devices = [];
+      this.setResult(`持续发现第 ${round} 轮...`, "pending");
       this.refreshDeviceList();
-      this.devices = await this.controller.scan({
+      const result = await this.controller.scan({
         quickWindowMs: 1500,
         fullWindowMs: 4200,
         allowFallbackNoPrefix: true,
         onProgress: (devices, meta) => {
-          this.devices = devices;
+          roundUsedFallback = meta.usedFallbackNoPrefix;
+          this.devices = mergeDiscoveryDevices(this.devices, devices, {
+            activeDeviceId: this.activeDeviceId,
+            now: Date.now(),
+            scanRound: round,
+            usedFallback: roundUsedFallback
+          });
           this.refreshDeviceList();
           if (meta.completed) {
             this.setResult(
-              `扫描补全完成：${devices.length} 台${meta.usedFallbackNoPrefix ? "（已触发无前缀补扫）" : ""}`
+              `第 ${round} 轮完成：当前列表 ${this.devices.length} 台${meta.usedFallbackNoPrefix ? "（已触发无前缀补扫）" : ""}`,
+              "success"
             );
           }
         }
       });
+      this.devices = mergeDiscoveryDevices(this.devices, result, {
+        activeDeviceId: this.activeDeviceId,
+        now: Date.now(),
+        scanRound: round,
+        usedFallback: roundUsedFallback
+      });
       this.refreshDeviceList();
-      this.setResult(`扫描完成：${this.devices.length} 台`);
+      this.setResult(`第 ${round} 轮完成：当前列表 ${this.devices.length} 台`, "success");
     } catch (error) {
-      this.setResult(`扫描失败：${this.errorMessage(error)}`);
+      this.setResult(`持续发现失败：${this.errorMessage(error)}`, "error");
+    } finally {
+      this.discoveryScanInFlight = false;
+      this.refreshScanControls();
+      this.scheduleNextDiscoveryRound();
     }
+  }
+
+  private scheduleNextDiscoveryRound(): void {
+    if (!this.discoveryActive) {
+      return;
+    }
+    if (this.discoveryTimer) {
+      clearTimeout(this.discoveryTimer);
+    }
+    this.discoveryTimer = setTimeout(() => {
+      this.discoveryTimer = null;
+      void this.runDiscoveryRound();
+    }, DISCOVERY_INTERVAL_MS);
+  }
+
+  private shouldPauseDiscoveryRound(): boolean {
+    return ["connecting", "discovering", "subscribing"].includes(this.status.connectionState);
   }
 
   private async quickConnectPreferred(): Promise<void> {
     try {
-      this.setResult("正在尝试快速连接最近设备...");
+      this.setResult("正在尝试快速连接最近设备...", "pending");
       const quickConnected = await this.controller.quickConnect();
       if (quickConnected) {
-        this.setResult("快速连接成功");
+        this.activeDeviceId = this.controller.getRecentDeviceId();
+        this.devices = mergeDiscoveryDevices(this.devices, [], {
+          activeDeviceId: this.activeDeviceId,
+          now: Date.now(),
+          scanRound: this.discoveryRound,
+          usedFallback: false
+        });
+        this.setResult("快速连接成功", "success");
         this.refreshStatus();
+        this.refreshDeviceList();
         this.refreshUuidSelectors();
         return;
       }
 
-      this.setResult("快连失败，自动扫描并连接信号最强设备...");
-      this.devices = await this.controller.scan({
+      this.setResult("快连失败，自动扫描并连接信号最强设备...", "pending");
+      const devices = await this.controller.scan({
         quickWindowMs: 1500,
         fullWindowMs: 4200,
         allowFallbackNoPrefix: true,
         onProgress: (devices) => {
-          this.devices = devices;
+          this.devices = mergeDiscoveryDevices(this.devices, devices, {
+            activeDeviceId: this.activeDeviceId,
+            now: Date.now(),
+            scanRound: this.discoveryRound,
+            usedFallback: false
+          });
           this.refreshDeviceList();
         }
       });
+      this.devices = mergeDiscoveryDevices(this.devices, devices, {
+        activeDeviceId: this.activeDeviceId,
+        now: Date.now(),
+        scanRound: this.discoveryRound,
+        usedFallback: false
+      });
       this.refreshDeviceList();
-      const strongest = this.devices[0];
+      const strongest = this.devices.find((item) => !item.isStale) ?? this.devices[0];
       if (!strongest) {
-        this.setResult("未发现可连接设备");
+        this.setResult("未发现可连接设备", "error");
         return;
       }
       await this.connectDevice(strongest);
     } catch (error) {
-      this.setResult(`快连失败：${this.errorMessage(error)}`);
+      this.setResult(`快连失败：${this.errorMessage(error)}`, "error");
     }
   }
 
   private async connectDevice(device: DeviceBrief): Promise<void> {
     try {
       this.activeDeviceId = device.deviceId;
-      this.setResult(`连接 ${device.name}...`);
+      this.devices = mergeDiscoveryDevices(this.devices, [], {
+        activeDeviceId: this.activeDeviceId,
+        now: Date.now(),
+        scanRound: this.discoveryRound,
+        usedFallback: false
+      });
+      this.refreshDeviceList();
+      this.setResult(`连接 ${device.name}...`, "pending");
       await this.controller.connectAndPrepare(device.deviceId);
-      this.setResult("连接成功并已订阅通知");
+      this.setResult("连接成功并已订阅通知", "success");
       this.refreshStatus();
       this.refreshUuidSelectors();
     } catch (error) {
-      this.setResult(`连接失败：${this.errorMessage(error)}`);
+      this.activeDeviceId = "";
+      this.setResult(`连接失败：${this.errorMessage(error)}`, "error");
+      this.refreshDeviceList();
     }
   }
 
   private async disconnectDevice(): Promise<void> {
     try {
       await this.controller.disconnect();
-      this.setResult("已断开连接");
+      this.activeDeviceId = "";
+      this.setResult("已断开连接", "success");
       this.refreshStatus();
+      this.refreshDeviceList();
       this.refreshUuidSelectors();
     } catch (error) {
-      this.setResult(`断开失败：${this.errorMessage(error)}`);
+      this.setResult(`断开失败：${this.errorMessage(error)}`, "error");
     }
   }
 
@@ -286,30 +509,19 @@ export class App {
       await this.controller.applyChannelSelection(writeUUID, notifyUUID);
       this.refreshStatus();
       this.refreshUuidSelectors();
-      this.setResult(`UUID已应用 write=${writeUUID} notify=${notifyUUID}`);
+      this.setResult(`UUID已应用 write=${writeUUID} notify=${notifyUUID}`, "success");
     } catch (error) {
-      this.setResult(`应用UUID失败：${this.errorMessage(error)}`);
+      this.setResult(`应用UUID失败：${this.errorMessage(error)}`, "error");
     }
   }
 
-  private async handleAction(action: () => Promise<string>): Promise<void> {
+  private async handleAction(command: BusinessCommand, action: () => Promise<string>): Promise<void> {
     try {
-      this.setResult("执行中...");
+      this.setResult(`${command.label}发送中...`, "pending");
       const message = await action();
-      this.setResult(`成功：${message}`);
+      this.setResult(`${command.label}已发送：${message}`, "success");
     } catch (error) {
-      this.setResult(`失败：${this.errorMessage(error)}`);
-    }
-  }
-
-  private async handleSetParam(): Promise<void> {
-    const idEl = this.byId("paramIdInput") as HTMLInputElement;
-    const valueEl = this.byId("paramValueInput") as HTMLInputElement;
-    try {
-      const message = await this.controller.setParam(idEl.value, Number(valueEl.value));
-      this.setResult(`参数已设置：${message}`);
-    } catch (error) {
-      this.setResult(`参数设置失败：${this.errorMessage(error)}`);
+      this.setResult(`${command.label}失败：${this.errorMessage(error)}`, "error");
     }
   }
 
@@ -318,26 +530,35 @@ export class App {
     const writeType = (this.byId("rawWriteType") as HTMLSelectElement).value as "write" | "writeNoResponse";
     try {
       await this.controller.sendRawHex(hexInput.value, writeType);
-      this.setResult(`RAW已发送 TX=${spacedHex(hexInput.value)}（不等待BLE回包）`);
+      this.setResult(`RAW已发送 TX=${spacedHex(hexInput.value)}（不等待BLE回包）`, "success");
     } catch (error) {
-      this.setResult(`RAW发送失败：${this.errorMessage(error)}`);
+      this.setResult(`RAW发送失败：${this.errorMessage(error)}`, "error");
     }
   }
 
   private refreshDeviceList(): void {
     const list = this.byId("deviceList");
     if (!this.devices.length) {
-      list.innerHTML = `<div class="device-empty">暂无设备，先点击扫描</div>`;
+      list.innerHTML = `<div class="device-empty">暂无设备，点击扫描设备开始持续发现</div>`;
       return;
     }
-    const sortedDevices = [...this.devices].sort((left, right) => right.rssi - left.rssi);
-    this.devices = sortedDevices;
-    list.innerHTML = sortedDevices
+    this.devices = mergeDiscoveryDevices(this.devices, [], {
+      activeDeviceId: this.activeDeviceId,
+      now: Date.now(),
+      scanRound: this.discoveryRound,
+      usedFallback: false
+    });
+    list.innerHTML = this.devices
       .map(
         (device, index) => `
-        <button class="device-item ${index === 0 ? "best" : ""}" data-device-id="${device.deviceId}">
-          <div class="device-name">${device.name}</div>
-          <div class="device-sub">RSSI ${device.rssi} dBm${index === 0 ? " · strongest" : ""}</div>
+        <button class="device-item ${index === 0 ? "best" : ""} ${device.isConnected ? "connected" : ""} ${device.isStale ? "stale" : ""}" data-device-id="${device.deviceId}">
+          <div class="device-name">
+            <span>${device.name}</span>
+            ${device.isConnected ? `<em>已连接</em>` : device.isStale ? `<em>最近见过</em>` : ""}
+          </div>
+          <div class="device-sub">
+            MAC ${this.shortDeviceId(device.deviceId)} · RSSI ${device.rssi} dBm · 第 ${device.scanRound} 轮${index === 0 ? " · strongest" : ""}${device.usedFallback ? " · fallback" : ""}
+          </div>
         </button>
       `
       )
@@ -356,7 +577,7 @@ export class App {
     if (!this.root.childElementCount) {
       return;
     }
-    const ready = this.status.connectionState === "ready";
+    const ready = isControlReady(this.status);
     this.byId("connBadge").textContent = this.status.connected
       ? `已连接 (${this.status.connectionState})`
       : `状态: ${this.status.connectionState}`;
@@ -366,6 +587,9 @@ export class App {
     this.byId("powerValue").textContent = `${this.status.power}%`;
     this.byId("batteryValue").textContent = this.status.battery == null ? "-" : `${this.status.battery}%`;
     this.byId("fwValue").textContent = this.status.fwVersion || "-";
+    this.byId("controlModeValue").textContent = this.status.mode;
+    this.byId("controlPowerValue").textContent = `${this.status.power}%`;
+    this.byId("controlBatteryValue").textContent = this.status.battery == null ? "-" : `${this.status.battery}%`;
     this.byId("writeTypeValue").textContent = this.controller.getWriteType();
     const modeButtons = this.root.querySelectorAll<HTMLButtonElement>("#modeSeg .seg-btn");
     modeButtons.forEach((button) => {
@@ -373,10 +597,11 @@ export class App {
     });
     const enterControlBtn = this.byId("enterControlBtn") as HTMLButtonElement;
     enterControlBtn.disabled = !ready;
-    const controlButtons = ["readStatusBtn", "readVersionBtn", "powerOnBtn", "powerOffBtn", "setParamBtn", "rawSendBtn"];
+    const controlButtons = [...BUSINESS_COMMANDS.map((command) => command.id), "rawSendBtn"];
     for (const id of controlButtons) {
       (this.byId(id) as HTMLButtonElement).disabled = !ready;
     }
+    this.refreshScanControls();
   }
 
   private refreshLogs(): void {
@@ -412,6 +637,17 @@ export class App {
     (this.byId("quickConnectBtn") as HTMLButtonElement).disabled = this.status.connectionState === "connecting";
   }
 
+  private refreshScanControls(): void {
+    if (!this.root.childElementCount) {
+      return;
+    }
+    const scanBtn = this.byId("scanBtn") as HTMLButtonElement;
+    scanBtn.textContent = this.discoveryActive ? "停止扫描" : "扫描设备";
+    scanBtn.title = this.discoveryActive ? "停止持续发现" : "持续发现设备";
+    scanBtn.classList.toggle("danger", this.discoveryActive);
+    scanBtn.disabled = this.discoveryScanInFlight && !this.discoveryActive;
+  }
+
   private renderUuidOptions(
     select: HTMLSelectElement,
     values: string[],
@@ -431,11 +667,15 @@ export class App {
     select.value = options[0];
   }
 
-  private setResult(message: string): void {
+  private setResult(message: string, tone: FeedbackTone = "idle"): void {
     if (!this.root.childElementCount) {
       return;
     }
-    this.byId("resultArea").textContent = message;
+    const resultNodes = this.root.querySelectorAll<HTMLElement>("#feedbackBar, .result-live");
+    resultNodes.forEach((node) => {
+      node.textContent = message;
+      node.dataset.tone = tone;
+    });
   }
 
   private toggleDebugByTap(): void {
@@ -461,5 +701,13 @@ export class App {
       return error.message;
     }
     return String(error);
+  }
+
+  private shortDeviceId(deviceId: string): string {
+    const normalized = deviceId.replace(/[^0-9a-fA-F]/g, "").toUpperCase();
+    if (normalized.length >= 6) {
+      return normalized.slice(-6);
+    }
+    return deviceId;
   }
 }

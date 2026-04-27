@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { DeviceController } from "./deviceController";
+import type { CommandDefinition } from "../protocol/commandBuilder";
+import { encodeFrame } from "../protocol/frameCodec";
 import type {
   ConnectionState,
   DeviceBrief,
@@ -22,6 +24,8 @@ class MockBleBridge {
   map: GattMap;
   quickScanDevices: DeviceBrief[] = [];
   failConnect = false;
+  writeFailuresRemaining = 0;
+  notifyOnSuccessfulWrite = "";
   lastScanOptions?: BleScanOptions;
   lastConnectOptions?: ConnectOptions;
 
@@ -59,6 +63,13 @@ class MockBleBridge {
     writeType: WriteType
   ): Promise<void> {
     this.calls.push(`write:${deviceId}:${writeUUID}:${payloadHex}:${writeType}`);
+    if (this.writeFailuresRemaining > 0) {
+      this.writeFailuresRemaining -= 1;
+      throw new Error("mock write failed");
+    }
+    if (this.notifyOnSuccessfulWrite) {
+      this.emitNotify(this.notifyOnSuccessfulWrite, deviceId);
+    }
   }
 
   async disconnect(deviceId: string): Promise<void> {
@@ -303,6 +314,35 @@ describe("DeviceController BLE flow", () => {
     expect(bridge.calls.filter((entry) => entry === "connect:D1").length).toBeGreaterThanOrEqual(2);
   });
 
+  it("keeps a ready connection state after a background scan while connected", async () => {
+    const map: GattMap = {
+      services: [
+        {
+          uuid: SERVICE_UUID,
+          characteristics: [
+            { uuid: WRITE_UUID, properties: ["write"] },
+            { uuid: NOTIFY_UUID_FFF2, properties: ["notify"] }
+          ]
+        }
+      ]
+    };
+    const bridge = new MockBleBridge(map);
+    bridge.quickScanDevices = [{ deviceId: "D2", name: "AC632N_2", rssi: -58 }];
+    const controller = new DeviceController() as unknown as {
+      ble: MockBleBridge;
+      connectAndPrepare: (id: string) => Promise<GattMap>;
+      scan: (options?: { quickWindowMs?: number; fullWindowMs?: number }) => Promise<DeviceBrief[]>;
+      getStatus: () => { connectionState: ConnectionState; connected: boolean };
+    };
+    controller.ble = bridge;
+
+    await controller.connectAndPrepare("D1");
+    await controller.scan({ quickWindowMs: 600, fullWindowMs: 600 });
+
+    expect(controller.getStatus().connected).toBe(true);
+    expect(controller.getStatus().connectionState).toBe("ready");
+  });
+
   it("locks command writeType to write mode for this project profile", async () => {
     const map: GattMap = {
       services: [
@@ -329,5 +369,144 @@ describe("DeviceController BLE flow", () => {
     expect(controller.getWriteType()).toBe("write");
     const writeCall = bridge.calls.find((entry) => entry.endsWith(":123456:write"));
     expect(writeCall).toBeTruthy();
+  });
+
+  it("sends protocol control commands without waiting for notify response", async () => {
+    const map: GattMap = {
+      services: [
+        {
+          uuid: SERVICE_UUID,
+          characteristics: [
+            { uuid: WRITE_UUID, properties: ["write"] },
+            { uuid: NOTIFY_UUID_FFF2, properties: ["notify"] }
+          ]
+        }
+      ]
+    };
+    const bridge = new MockBleBridge(map);
+    const controller = new DeviceController() as unknown as {
+      ble: MockBleBridge;
+      connectAndPrepare: (id: string) => Promise<GattMap>;
+      powerToggle: () => Promise<string>;
+      brightnessDown: () => Promise<string>;
+    };
+    controller.ble = bridge;
+    await controller.connectAndPrepare("D1");
+
+    await expect(controller.powerToggle()).resolves.toContain("sent powerToggle");
+    await expect(controller.brightnessDown()).resolves.toContain("sent brightnessDown");
+
+    const controlWrites = bridge.calls.filter((entry) => entry.startsWith("write:D1"));
+    expect(controlWrites.length).toBe(2);
+    expect(controlWrites[0]).toContain(":FFCE06000A0000300D:write");
+    expect(controlWrites[1]).toContain(":FFCE06000C0000300F:write");
+  });
+
+  it("sends query commands without waiting unless explicitly marked as response commands", async () => {
+    const map: GattMap = {
+      services: [
+        {
+          uuid: SERVICE_UUID,
+          characteristics: [
+            { uuid: WRITE_UUID, properties: ["write"] },
+            { uuid: NOTIFY_UUID_FFF2, properties: ["notify"] }
+          ]
+        }
+      ]
+    };
+    const bridge = new MockBleBridge(map);
+    const controller = new DeviceController() as unknown as {
+      ble: MockBleBridge;
+      connectAndPrepare: (id: string) => Promise<GattMap>;
+      readStatus: () => Promise<string>;
+    };
+    controller.ble = bridge;
+    await controller.connectAndPrepare("D1");
+
+    await expect(controller.readStatus()).resolves.toContain("sent readStatus");
+    const writeCall = bridge.calls.find((entry) => entry.startsWith("write:D1"));
+    expect(writeCall).toBeTruthy();
+  });
+
+  it("sends the five minimum command-table payloads through the app-facing methods", async () => {
+    const map: GattMap = {
+      services: [
+        {
+          uuid: SERVICE_UUID,
+          characteristics: [
+            { uuid: WRITE_UUID, properties: ["write"] },
+            { uuid: NOTIFY_UUID_FFF2, properties: ["notify"] }
+          ]
+        }
+      ]
+    };
+    const bridge = new MockBleBridge(map);
+    const controller = new DeviceController() as unknown as {
+      ble: MockBleBridge;
+      connectAndPrepare: (id: string) => Promise<GattMap>;
+      powerToggle: () => Promise<string>;
+      brightnessUp: () => Promise<string>;
+      brightnessDown: () => Promise<string>;
+      readParams: () => Promise<string>;
+      readStatus: () => Promise<string>;
+    };
+    controller.ble = bridge;
+    await controller.connectAndPrepare("D1");
+
+    await controller.powerToggle();
+    await controller.brightnessUp();
+    await controller.brightnessDown();
+    await controller.readParams();
+    await controller.readStatus();
+
+    const payloads = bridge.calls
+      .filter((entry) => entry.startsWith("write:D1"))
+      .map((entry) => entry.split(":")[3]);
+    expect(payloads).toEqual([
+      "FFCE06000A0000300D",
+      "FFCE06000B0000300E",
+      "FFCE06000C0000300F",
+      "FFCE06000D00003010",
+      "FFCE06000E00003011"
+    ]);
+  });
+
+  it("cleans pending response after a waited command write fails so retry can wait for notify", async () => {
+    const map: GattMap = {
+      services: [
+        {
+          uuid: SERVICE_UUID,
+          characteristics: [
+            { uuid: WRITE_UUID, properties: ["write"] },
+            { uuid: NOTIFY_UUID_FFF2, properties: ["notify"] }
+          ]
+        }
+      ]
+    };
+    const bridge = new MockBleBridge(map);
+    bridge.writeFailuresRemaining = 1;
+    bridge.notifyOnSuccessfulWrite = encodeFrame(0x99);
+    const command: CommandDefinition = {
+      name: "explicitResponseCommand",
+      kind: "query",
+      payloadHex: encodeFrame(0x09),
+      expectedResponse: 0x99,
+      waitForResponse: true,
+      timeoutMs: 1000,
+      retryCount: 1,
+      updatesStatus: true
+    };
+    const controller = new DeviceController() as unknown as {
+      ble: MockBleBridge;
+      connectAndPrepare: (id: string) => Promise<GattMap>;
+      dispatchCommand: (definition: CommandDefinition) => Promise<string>;
+    };
+    controller.ble = bridge;
+    await controller.connectAndPrepare("D1");
+
+    await expect(controller.dispatchCommand(command)).resolves.toBe("unknown command=0x99");
+
+    const writes = bridge.calls.filter((entry) => entry.startsWith("write:D1"));
+    expect(writes).toHaveLength(2);
   });
 });

@@ -7,8 +7,11 @@
   --muted: #646b78;
   --accent: #ea8f00;
   --accent-strong: #d57800;
+  --ink: #1f2530;
+  --info: #146c94;
   --line: #e1e4ea;
   --ok: #1a9a6d;
+  --bad: #b43d32;
 }
 
 * {
@@ -19,10 +22,7 @@ html,
 body {
   margin: 0;
   min-height: 100%;
-  background:
-    radial-gradient(80vw 40vh at 15% -10%, #fff3d9 0%, transparent 70%),
-    radial-gradient(70vw 35vh at 90% -20%, #ecf4ff 0%, transparent 70%),
-    var(--bg);
+  background: linear-gradient(180deg, #f7f8fa 0%, #eef1f5 100%);
   color: var(--text);
 }
 
@@ -54,6 +54,8 @@ select {
   font-size: 12px;
   color: var(--muted);
   letter-spacing: 0;
+  font-weight: 700;
+  text-transform: uppercase;
 }
 
 .brand h1 {
@@ -76,6 +78,36 @@ select {
   color: #0b6c4e;
   border-color: rgba(26, 154, 109, 0.35);
   background: rgba(26, 154, 109, 0.12);
+}
+
+.feedback-bar {
+  margin-bottom: 12px;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--info);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: #ffffff;
+  color: #223044;
+  font-weight: 700;
+  min-height: 42px;
+}
+
+.feedback-bar[data-tone="pending"],
+.result[data-tone="pending"] {
+  border-left-color: var(--info);
+  background: #f2f8fb;
+}
+
+.feedback-bar[data-tone="success"],
+.result[data-tone="success"] {
+  border-left-color: var(--ok);
+  background: #f2fbf7;
+}
+
+.feedback-bar[data-tone="error"],
+.result[data-tone="error"] {
+  border-left-color: var(--bad);
+  background: #fff5f3;
 }
 
 main {
@@ -153,6 +185,12 @@ main {
   background: #f8f9fb;
 }
 
+.btn.danger {
+  background: #fff5f3;
+  border-color: rgba(180, 61, 50, 0.45);
+  color: var(--bad);
+}
+
 .btn.icon {
   min-width: 88px;
 }
@@ -200,8 +238,32 @@ main {
   box-shadow: inset 0 0 0 1px rgba(234, 143, 0, 0.22);
 }
 
+.device-item.connected {
+  border-color: rgba(26, 154, 109, 0.5);
+  background: #f2fbf7;
+}
+
+.device-item.stale {
+  background: #fafbfd;
+  opacity: 0.78;
+}
+
 .device-name {
   font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.device-name em {
+  font-style: normal;
+  font-size: 12px;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 2px 7px;
+  background: #fff;
 }
 
 .device-sub {
@@ -223,6 +285,34 @@ main {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
+}
+
+.status-slab {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+  background: #f8fafc;
+}
+
+.status-slab div {
+  min-width: 0;
+}
+
+.status-slab span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.status-slab strong {
+  display: block;
+  margin-top: 4px;
+  font-family: "Manrope", sans-serif;
+  font-size: 16px;
+  overflow-wrap: anywhere;
 }
 
 .kv {
@@ -265,9 +355,9 @@ main {
 }
 
 .seg-btn.active {
-  background: #1f2530;
+  background: var(--ink);
   color: #fff;
-  border-color: #1f2530;
+  border-color: var(--ink);
 }
 
 .range-wrap {
@@ -300,13 +390,25 @@ main {
   gap: 8px;
 }
 
-.param-row {
+.command-btn {
+  min-height: 66px;
+  text-align: left;
   display: grid;
-  grid-template-columns: 1fr 1fr auto;
-  gap: 8px;
+  align-content: center;
+  gap: 3px;
 }
 
-.param-row input,
+.command-btn span {
+  font-size: 15px;
+}
+
+.command-btn small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
 .raw-row input,
 .raw-row select,
 .uuid-row select {
@@ -319,6 +421,7 @@ main {
 
 .result {
   border: 1px solid var(--line);
+  border-left: 4px solid var(--info);
   border-radius: 8px;
   min-height: 44px;
   padding: 10px;
@@ -372,12 +475,22 @@ main {
     padding: 10px 10px 16px;
   }
 
-  .param-row {
-    grid-template-columns: 1fr 1fr;
+  .toolbar {
+    flex-wrap: wrap;
+    justify-content: flex-start;
   }
 
-  .param-row .btn {
-    grid-column: 1 / -1;
+  .toolbar .chip {
+    flex: 1 1 100%;
+  }
+
+  .status-slab {
+    grid-template-columns: 1fr;
+  }
+
+  .command-grid,
+  .quick-grid {
+    grid-template-columns: 1fr;
   }
 
   .debug .raw-row {

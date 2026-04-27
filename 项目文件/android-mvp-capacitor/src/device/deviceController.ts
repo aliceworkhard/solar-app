@@ -1,5 +1,6 @@
 import { BleBridge } from "../ble/bleBridge";
 import { CommandBuilder } from "../protocol/commandBuilder";
+import type { CommandDefinition } from "../protocol/commandBuilder";
 import { FrameDecoder } from "../protocol/frameCodec";
 import { parseResponse } from "../protocol/responseParser";
 import { normalizeHex, spacedHex } from "../utils/hex";
@@ -92,6 +93,7 @@ export class DeviceController {
     const quickWindowMs = options.quickWindowMs ?? DEFAULT_SCAN_QUICK_WINDOW_MS;
     const fullWindowMs = options.fullWindowMs ?? DEFAULT_SCAN_FULL_WINDOW_MS;
     const allowFallbackNoPrefix = options.allowFallbackNoPrefix ?? true;
+    const keepReadyAfterScan = this.status.connected && this.status.connectionState === "ready";
 
     if (this.scanProgressUnsubscribe) {
       this.scanProgressUnsubscribe();
@@ -117,10 +119,12 @@ export class DeviceController {
       });
     }
 
-    this.mergeStatus({
-      connectionState: "scanning",
-      lastUpdatedAt: Date.now()
-    });
+    if (!keepReadyAfterScan) {
+      this.mergeStatus({
+        connectionState: "scanning",
+        lastUpdatedAt: Date.now()
+      });
+    }
     this.addLog(
       "info",
       `Start BLE scan quick=${quickWindowMs}ms full=${fullWindowMs}ms`
@@ -135,10 +139,16 @@ export class DeviceController {
       });
       const sorted = this.sortDevices(devices);
       this.addLog("info", `Scan quick result count=${sorted.length}`);
-      this.mergeStatus({ connectionState: "idle", lastUpdatedAt: Date.now() });
+      this.mergeStatus({
+        connectionState: keepReadyAfterScan ? "ready" : "idle",
+        lastUpdatedAt: Date.now()
+      });
       return sorted;
     } catch (error) {
-      this.mergeStatus({ connectionState: "error", lastUpdatedAt: Date.now() });
+      this.mergeStatus({
+        connectionState: keepReadyAfterScan ? "ready" : "error",
+        lastUpdatedAt: Date.now()
+      });
       throw error;
     }
   }
@@ -230,30 +240,40 @@ export class DeviceController {
   }
 
   async readStatus(): Promise<string> {
-    const packet = CommandBuilder.readStatus();
-    return this.dispatchCommand(packet.payloadHex, packet.expectedResponse);
+    return this.dispatchCommand(CommandBuilder.readStatus());
+  }
+
+  async readParams(): Promise<string> {
+    return this.dispatchCommand(CommandBuilder.readParams());
   }
 
   async readVersion(): Promise<string> {
-    const packet = CommandBuilder.readVersion();
-    return this.dispatchCommand(packet.payloadHex, packet.expectedResponse);
+    return this.readParams();
+  }
+
+  async powerToggle(): Promise<string> {
+    return this.dispatchCommand(CommandBuilder.powerToggle());
   }
 
   async powerOn(): Promise<string> {
-    const packet = CommandBuilder.powerOn();
-    return this.dispatchCommand(packet.payloadHex, packet.expectedResponse);
+    return this.powerToggle();
   }
 
   async powerOff(): Promise<string> {
-    const packet = CommandBuilder.powerOff();
-    return this.dispatchCommand(packet.payloadHex, packet.expectedResponse);
+    return this.powerToggle();
+  }
+
+  async brightnessUp(): Promise<string> {
+    return this.dispatchCommand(CommandBuilder.brightnessUp());
+  }
+
+  async brightnessDown(): Promise<string> {
+    return this.dispatchCommand(CommandBuilder.brightnessDown());
   }
 
   async setParam(paramId: string, value: number): Promise<string> {
-    const parsedParamId = Number.parseInt(paramId, 10);
-    const safeId = Number.isFinite(parsedParamId) ? parsedParamId : 1;
-    const packet = CommandBuilder.setParam(safeId, value);
-    return this.dispatchCommand(packet.payloadHex, packet.expectedResponse);
+    this.addLog("warn", `Single-param write is not defined by protocol yet. paramId=${paramId} value=${value}`);
+    throw new Error("协议未定义单参数设置；需后续实现 B1 整包参数下载。");
   }
 
   async sendRawHex(hex: string, writeType: WriteType): Promise<void> {
@@ -262,7 +282,12 @@ export class DeviceController {
     if (!normalized) {
       throw new Error("HEX is empty.");
     }
-    this.addLog("tx", spacedHex(normalized));
+    this.addLog("tx", spacedHex(normalized), {
+      direction: "tx",
+      payloadHex: normalized,
+      writeType,
+      result: "raw-sent"
+    });
     await this.ble.write(this.currentDeviceId, this.currentWriteUUID, normalized, writeType);
   }
 
@@ -283,7 +308,12 @@ export class DeviceController {
       }, timeoutMs);
       this.pendingAnyNotify = { resolve, reject, timer: timeoutHandle };
     });
-    this.addLog("tx", spacedHex(normalized));
+    this.addLog("tx", spacedHex(normalized), {
+      direction: "tx",
+      payloadHex: normalized,
+      writeType,
+      result: "raw-waiting"
+    });
     try {
       await this.ble.write(this.currentDeviceId, this.currentWriteUUID, normalized, writeType);
       return await waiter;
@@ -358,23 +388,24 @@ export class DeviceController {
     };
   }
 
-  private async dispatchCommand(payloadHex: string, expectedResponse: number): Promise<string> {
+  private async dispatchCommand(command: CommandDefinition): Promise<string> {
     return this.runExclusive(async () => {
       this.ensureReadyForTx();
-      return this.sendWithRetry(payloadHex, expectedResponse, 2, 2000);
+      if (!command.waitForResponse) {
+        return this.sendWithoutWait(command);
+      }
+      return this.sendWithRetry(command);
     });
   }
 
-  private async sendWithRetry(
-    payloadHex: string,
-    expectedResponse: number,
-    retries: number,
-    timeoutMs: number
-  ): Promise<string> {
+  private async sendWithRetry(command: CommandDefinition): Promise<string> {
+    if (command.expectedResponse == null) {
+      throw new Error(`Command ${command.name} is missing expectedResponse.`);
+    }
     let latestError: Error | null = null;
-    for (let attempt = 0; attempt <= retries; attempt += 1) {
+    for (let attempt = 0; attempt <= command.retryCount; attempt += 1) {
       try {
-        const response = await this.sendAndWait(payloadHex, expectedResponse, timeoutMs);
+        const response = await this.sendAndWait(command, command.expectedResponse, command.timeoutMs ?? 2000);
         return response;
       } catch (error) {
         latestError = error as Error;
@@ -384,8 +415,28 @@ export class DeviceController {
     throw latestError ?? new Error("Command failed.");
   }
 
+  private async sendWithoutWait(command: CommandDefinition): Promise<string> {
+    this.ensureReadyForTx();
+    this.addLog("tx", spacedHex(command.payloadHex), {
+      direction: "tx",
+      commandName: command.name,
+      payloadHex: command.payloadHex,
+      writeType: this.currentWriteType,
+      result: "sent"
+    });
+    await this.ble.write(this.currentDeviceId, this.currentWriteUUID, command.payloadHex, this.currentWriteType);
+    const summary = `sent ${command.name}`;
+    this.addLog("info", summary, {
+      commandName: command.name,
+      payloadHex: command.payloadHex,
+      writeType: this.currentWriteType,
+      result: "sent"
+    });
+    return summary;
+  }
+
   private async sendAndWait(
-    payloadHex: string,
+    command: CommandDefinition,
     expectedResponse: number,
     timeoutMs: number
   ): Promise<string> {
@@ -400,8 +451,23 @@ export class DeviceController {
       }, timeoutMs);
       this.pendingResponse.set(expectedResponse, { resolve, reject, timer });
     });
-    this.addLog("tx", spacedHex(payloadHex));
-    await this.ble.write(this.currentDeviceId, this.currentWriteUUID, payloadHex, this.currentWriteType);
+    this.addLog("tx", spacedHex(command.payloadHex), {
+      direction: "tx",
+      commandName: command.name,
+      payloadHex: command.payloadHex,
+      writeType: this.currentWriteType,
+      result: "waiting"
+    });
+    try {
+      await this.ble.write(this.currentDeviceId, this.currentWriteUUID, command.payloadHex, this.currentWriteType);
+    } catch (error) {
+      const pending = this.pendingResponse.get(expectedResponse);
+      if (pending) {
+        clearTimeout(pending.timer);
+        this.pendingResponse.delete(expectedResponse);
+      }
+      throw error;
+    }
     return waiter;
   }
 
@@ -419,7 +485,11 @@ export class DeviceController {
     if (!normalized) {
       return;
     }
-    this.addLog("rx", spacedHex(normalized));
+    this.addLog("rx", spacedHex(normalized), {
+      direction: "rx",
+      rawNotify: normalized,
+      result: "notify"
+    });
     if (this.pendingAnyNotify) {
       clearTimeout(this.pendingAnyNotify.timer);
       const pendingAny = this.pendingAnyNotify;
@@ -438,12 +508,25 @@ export class DeviceController {
         this.pendingResponse.delete(frame.command);
         pending.resolve(parsed.summary);
       }
-      this.addLog("info", parsed.summary);
+      this.addLog("info", parsed.summary, {
+        direction: "rx",
+        commandName: `0x${frame.command.toString(16).toUpperCase()}`,
+        rawNotify: frame.rawHex,
+        result: parsed.summary
+      });
     }
   }
 
   private handleConnectionEvent(state: ConnectionState, reason?: string): void {
     this.addLog("info", `connection ${state}${reason ? ` (${reason})` : ""}`);
+    if (this.status.connected && (state === "scanning" || state === "idle")) {
+      this.mergeStatus({
+        connected: true,
+        connectionState: "ready",
+        lastUpdatedAt: Date.now()
+      });
+      return;
+    }
     if (state === "error" || state === "disconnected") {
       this.mergeStatus({
         connected: false,
@@ -579,14 +662,15 @@ export class DeviceController {
     }
   }
 
-  private addLog(level: LogEntry["level"], message: string): void {
+  private addLog(level: LogEntry["level"], message: string, meta: Omit<Partial<LogEntry>, "id" | "time" | "level" | "message"> = {}): void {
     this.logs = [
       ...this.logs,
       {
         id: this.nextLogId++,
         time: Date.now(),
         level,
-        message
+        message,
+        ...meta
       }
     ].slice(-300);
     for (const listener of this.logListeners) {

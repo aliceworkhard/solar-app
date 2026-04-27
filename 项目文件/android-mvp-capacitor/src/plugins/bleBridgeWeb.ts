@@ -1,5 +1,6 @@
 import { WebPlugin } from "@capacitor/core";
 import type { ConnectionState, DeviceBrief, GattMap, ScanProgressEvent } from "../types";
+import { encodeFrame } from "../protocol/frameCodec";
 import type {
   BleScanOptions,
   BleBridgePlugin,
@@ -92,7 +93,8 @@ export class BleBridgeWeb extends WebPlugin implements BleBridgePlugin {
     }
     await this.delay(options.writeType === "write" ? 110 : 35);
     const normalized = options.payloadHex.replace(/\s+/g, "").toUpperCase();
-    const loopback = `AA550290${normalized.slice(0, 2) || "00"}0000`;
+    const brightness = Number.parseInt(normalized.slice(8, 10) || "80", 16) || 0x80;
+    const loopback = encodeFrame(0xe1, 0x00, [0x02, 0x0c, 0x80, 0x01, 0x4a, brightness, 0x1c, 0x2d], 0x01);
     this.emitNotify(loopback);
   }
 
@@ -125,7 +127,8 @@ export class BleBridgeWeb extends WebPlugin implements BleBridgePlugin {
         return;
       }
       const pseudoPower = Math.floor((Date.now() / 1000) % 100);
-      this.emitNotify(`AA550481${pseudoPower.toString(16).padStart(2, "0")}01000000`);
+      const brightness = Math.round((pseudoPower / 100) * 255);
+      this.emitNotify(encodeFrame(0xe1, 0x00, [0x02, 0x0c, 0x80, 0x01, 0x4a, brightness, 0x1c, 0x2d], 0x01));
     }, 3000);
   }
 

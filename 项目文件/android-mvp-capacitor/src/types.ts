@@ -56,4 +56,10 @@ export interface LogEntry {
   time: number;
   level: "info" | "warn" | "error" | "tx" | "rx";
   message: string;
+  direction?: "tx" | "rx";
+  commandName?: string;
+  payloadHex?: string;
+  writeType?: "write" | "writeNoResponse";
+  result?: string;
+  rawNotify?: string;
 }

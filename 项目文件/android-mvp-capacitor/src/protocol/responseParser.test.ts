@@ -3,23 +3,29 @@ import { parseResponse } from "./responseParser";
 import type { DecodedFrame } from "./frameCodec";
 
 describe("parseResponse", () => {
-  it("treats 0x90 payload 0xAA as generic ack code, not off state", () => {
+  it("parses status response payload from protocol frame", () => {
     const frame: DecodedFrame = {
-      command: 0x90,
-      payload: [0xaa],
-      rawHex: "AA550290AA0000"
+      descriptor: 0x01,
+      command: 0xe1,
+      subCommand: 0x00,
+      payload: [0x02, 0x0c, 0x80, 0x01, 0x4a, 0x80, 0x1c, 0x2d],
+      rawHex: ""
     };
     const parsed = parseResponse(frame);
-    expect(parsed.summary).toContain("powerAck");
-    expect(parsed.summary).toContain("0xAA");
-    expect(parsed.summary.includes("off")).toBe(false);
+    expect(parsed.summary).toContain("status");
+    expect(parsed.summary).toContain("brightness=50%");
+    expect(parsed.statusPatch?.power).toBe(50);
   });
 
-  it("keeps explicit on/off semantics for payload 0x01/0x00", () => {
-    const onParsed = parseResponse({ command: 0x90, payload: [0x01], rawHex: "" });
-    const offParsed = parseResponse({ command: 0x90, payload: [0x00], rawHex: "" });
-    expect(onParsed.summary).toBe("powerAck on");
-    expect(offParsed.summary).toBe("powerAck off");
+  it("parses params response as passive status update", () => {
+    const parsed = parseResponse({
+      descriptor: 0x01,
+      command: 0xb1,
+      subCommand: 0x03,
+      payload: [0x03, 0x01],
+      rawHex: ""
+    });
+    expect(parsed.summary).toContain("params mode=average");
+    expect(parsed.statusPatch?.mode).toBe("average");
   });
 });
-

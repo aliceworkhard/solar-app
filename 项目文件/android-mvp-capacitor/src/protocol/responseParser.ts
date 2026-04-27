@@ -20,81 +20,36 @@ function modeFromCode(value: number): string {
   return "unknown";
 }
 
-function parseAscii(payload: number[]): string {
-  return payload
-    .map((item) => (item >= 32 && item <= 126 ? String.fromCharCode(item) : ""))
-    .join("")
-    .trim();
+function word(high = 0, low = 0): number {
+  return ((high & 0xff) << 8) | (low & 0xff);
 }
 
 export function parseResponse(frame: DecodedFrame): ParsedResponse {
   const payload = frame.payload;
   switch (frame.command) {
-    case 0x81: {
-      const power = payload[0] ?? 0;
-      const mode = modeFromCode(payload[1] ?? 1);
-      const battery = payload[2] ?? 0;
+    case 0xe1: {
+      const workMinutes = (payload[0] ?? 0) * 5;
+      const batteryVoltage = word(payload[1], payload[2]) * 0.00782;
+      const loadCurrent = word(payload[3], payload[4]) * 0.028256;
+      const brightness = Math.min(100, Math.round(((payload[5] ?? 0) / 255) * 100));
+      const solarVoltage = word(payload[6], payload[7]) * 0.062366;
       return {
         command: frame.command,
-        summary: `status mode=${mode} power=${power} battery=${battery}`,
+        summary: `status work=${workMinutes}min brightness=${brightness}% battery=${batteryVoltage.toFixed(2)}V current=${loadCurrent.toFixed(2)}A solar=${solarVoltage.toFixed(1)}V`,
+        statusPatch: {
+          power: brightness,
+          battery: Number(batteryVoltage.toFixed(2)),
+          lastUpdatedAt: Date.now()
+        }
+      };
+    }
+    case 0xb1: {
+      const mode = modeFromCode(frame.subCommand || payload[0] || 1);
+      return {
+        command: frame.command,
+        summary: `params mode=${mode} bytes=${payload.length}`,
         statusPatch: {
           mode,
-          power,
-          battery,
-          lastUpdatedAt: Date.now()
-        }
-      };
-    }
-    case 0x82: {
-      const version = parseAscii(payload) || `v${(payload[0] ?? 0).toString(16).padStart(2, "0")}`;
-      return {
-        command: frame.command,
-        summary: `version ${version}`,
-        statusPatch: {
-          fwVersion: version,
-          lastUpdatedAt: Date.now()
-        }
-      };
-    }
-    case 0x90: {
-      const code = payload[0] ?? 0x00;
-      if (code === 0x01) {
-        return {
-          command: frame.command,
-          summary: "powerAck on",
-          statusPatch: {
-            connected: true,
-            lastUpdatedAt: Date.now()
-          }
-        };
-      }
-      if (code === 0x00) {
-        return {
-          command: frame.command,
-          summary: "powerAck off",
-          statusPatch: {
-            connected: true,
-            lastUpdatedAt: Date.now()
-          }
-        };
-      }
-      return {
-        command: frame.command,
-        summary: `powerAck ack code=0x${code.toString(16).toUpperCase().padStart(2, "0")}`,
-        statusPatch: {
-          connected: true,
-          lastUpdatedAt: Date.now()
-        }
-      };
-    }
-    case 0xa0: {
-      const id = payload[0] ?? 0;
-      const value = payload[1] ?? 0;
-      return {
-        command: frame.command,
-        summary: `paramAck id=${id} value=${value}`,
-        statusPatch: {
-          power: value,
           lastUpdatedAt: Date.now()
         }
       };

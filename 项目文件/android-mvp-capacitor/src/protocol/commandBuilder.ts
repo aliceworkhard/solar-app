@@ -1,64 +1,96 @@
 import { encodeFrame } from "./frameCodec";
 
-export interface CommandPacket {
+export type CommandKind = "query" | "control";
+
+export interface CommandDefinition {
   name: string;
-  expectedResponse: number;
   payloadHex: string;
+  kind: CommandKind;
+  expectedResponse?: number;
+  waitForResponse: boolean;
+  timeoutMs?: number;
+  retryCount: number;
+  updatesStatus: boolean;
 }
 
 const CMD = {
-  READ_STATUS: 0x01,
-  READ_VERSION: 0x02,
-  POWER: 0x10,
-  SET_PARAM: 0x20
+  POWER_TOGGLE: 0x0a,
+  BRIGHTNESS_UP: 0x0b,
+  BRIGHTNESS_DOWN: 0x0c,
+  READ_PARAMS: 0x0d,
+  READ_STATUS: 0x0e
 } as const;
 
 const RESP = {
-  STATUS: 0x81,
-  VERSION: 0x82,
-  POWER_ACK: 0x90,
-  PARAM_ACK: 0xa0
+  PARAMS: 0xb1,
+  STATUS: 0xe1
 } as const;
 
 export class CommandBuilder {
-  static readStatus(): CommandPacket {
+  static readStatus(): CommandDefinition {
     return {
       name: "readStatus",
+      kind: "query",
       expectedResponse: RESP.STATUS,
-      payloadHex: encodeFrame(CMD.READ_STATUS)
+      waitForResponse: false,
+      payloadHex: encodeFrame(CMD.READ_STATUS, 0x00, [0x00]),
+      retryCount: 0,
+      updatesStatus: true
     };
   }
 
-  static readVersion(): CommandPacket {
+  static readParams(): CommandDefinition {
     return {
-      name: "readVersion",
-      expectedResponse: RESP.VERSION,
-      payloadHex: encodeFrame(CMD.READ_VERSION)
+      name: "readParams",
+      kind: "query",
+      expectedResponse: RESP.PARAMS,
+      waitForResponse: false,
+      payloadHex: encodeFrame(CMD.READ_PARAMS, 0x00, [0x00]),
+      retryCount: 0,
+      updatesStatus: true
     };
   }
 
-  static powerOn(): CommandPacket {
+  static powerToggle(): CommandDefinition {
     return {
-      name: "powerOn",
-      expectedResponse: RESP.POWER_ACK,
-      payloadHex: encodeFrame(CMD.POWER, [0x01])
+      name: "powerToggle",
+      kind: "control",
+      waitForResponse: false,
+      payloadHex: encodeFrame(CMD.POWER_TOGGLE, 0x00, [0x00]),
+      retryCount: 0,
+      updatesStatus: false
     };
   }
 
-  static powerOff(): CommandPacket {
+  static brightnessUp(): CommandDefinition {
     return {
-      name: "powerOff",
-      expectedResponse: RESP.POWER_ACK,
-      payloadHex: encodeFrame(CMD.POWER, [0x00])
+      name: "brightnessUp",
+      kind: "control",
+      waitForResponse: false,
+      payloadHex: encodeFrame(CMD.BRIGHTNESS_UP, 0x00, [0x00]),
+      retryCount: 0,
+      updatesStatus: false
     };
   }
 
-  static setParam(paramId: number, value: number): CommandPacket {
+  static brightnessDown(): CommandDefinition {
     return {
-      name: "setParam",
-      expectedResponse: RESP.PARAM_ACK,
-      payloadHex: encodeFrame(CMD.SET_PARAM, [paramId & 0xff, value & 0xff])
+      name: "brightnessDown",
+      kind: "control",
+      waitForResponse: false,
+      payloadHex: encodeFrame(CMD.BRIGHTNESS_DOWN, 0x00, [0x00]),
+      retryCount: 0,
+      updatesStatus: false
     };
+  }
+
+  static allDefinitions(): CommandDefinition[] {
+    return [
+      CommandBuilder.readStatus(),
+      CommandBuilder.readParams(),
+      CommandBuilder.powerToggle(),
+      CommandBuilder.brightnessUp(),
+      CommandBuilder.brightnessDown()
+    ];
   }
 }
-
