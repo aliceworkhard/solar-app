@@ -29,15 +29,25 @@
 
 ## Current Best Next Step
 
-当前可以进入 `T-011` 两页 UI 收敛准备，但不要扩大协议或 BLE 范围。
+T-022 后的当前优先事项是交接给 QA/BLE/Protocol 方向做真机验收，不要继续凭感觉改 UI 或 BLE 参数。
+
+接手入口：
+
+- 最新交接总览：`.agent/handoffs/NEXT_AGENT_HANDOFF.md`
+- 正式交接快照：`.agent/handoffs/2026-04-28-Orchestrator-next-agent-project-handoff.md`
+
+优先任务：
+
+1. `T-001`：补齐 20 次真机扫描/连接性能采样，任务包 `.agent/tasks/active/T-001-performance-sampling.md`。
+2. `T-002`：复测 5 条 MVP 命令，任务包 `.agent/tasks/active/T-002-command-retest.md`。
+3. `T-010`：必须等 T-001/T-009 有真实数据后，再考虑优化持续发现策略。
 
 已知前提：
 
-- `T-001` / `T-002` 已有可行性冒烟测试结论：使用 vivo X300 Pro 测试，连接、收发、5 条 MVP 命令均未发现传输错误。
+- `T-001` / `T-002` 目前只有可行性冒烟测试结论：使用 vivo X300 Pro 测试，连接、收发、5 条 MVP 命令均未发现传输错误。
 - 正式量化验收仍需后补：`T-001` 的 20 次扫描/连接 P50/P90，以及 `T-002` 的 5 条命令各 10 次逐条记录。
 - 可行性记录：`.agent/reports/2026-04-27-feasibility-smoke-test.md`。
 - 正式补测模板：`.agent/reports/templates/`。
-- UI 接力任务包：`.agent/tasks/active/T-011-ui-convergence.md`。
 
 ## Plan First Gate
 

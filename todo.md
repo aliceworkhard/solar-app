@@ -15,7 +15,6 @@
 
 - 当前没有正在实施的已批准任务。
 
-
 - [ ] T-001 补齐 20 次真机性能采样
   - 优先级：P0
   - 状态：Feasibility Passed；用户反馈使用 vivo X300 Pro 测试未发现扫描/连接/传输问题，正式 20 次采样与 P50/P90 后补
@@ -72,6 +71,7 @@
 
 ## Recently Done
 
+- [x] T-023 下一个 agent 项目接手包整理：已更新 `.agent/handoffs/NEXT_AGENT_HANDOFF.md` 和正式交接快照 `.agent/handoffs/2026-04-28-Orchestrator-next-agent-project-handoff.md`；`.agent/START_HERE.md` 顶部当前下一步已指向 T-001/T-002；已修正 `项目文件/上传日志.md` 最新 T-022 记录格式；未改业务代码。
 - [x] T-022 UI 扫描停止、状态栏渐变、详情锚点与电流规则修正：`+ / X` 持续发现按钮改为独立状态 helper，点 `X` 会立即失效旧扫描回调并恢复 `+`；详情页取消隐藏式 tab，`设备状态` 与 `控制面板` 连续展示，顶部按钮改为锚点定位；电流显示规则改为亮度 `0` 用回传电流、亮度非 `0` 用 `power / 100 * 9.7272A`；Android 状态栏 theme/runtime/WebView 透明处理增强；`npm.cmd test -- src/app.test.ts`、`npm.cmd test`、`npm.cmd run build`、`npm.cmd run sync`、JBR `:app:assembleDebug` 通过。
 - [x] T-021 启动自动扫描、状态栏渐变延伸、详情页 tab 化与 BLE UI 卡顿修复：打开 App 后会自动后台扫描 `AC632N_1`；`+` 持续发现改为非阻塞启动；扫描/连接异步流程加入 operation token，过期回调不再覆盖当前 UI；断开后设备保留为可连接并降到列表下方；连接后首次读状态改为后台发送，快速进入详情不阻塞；详情页支持“设备状态 / 控制面板”tab 切换，控制面板内命令区在上、模式按钮在下；Android 状态栏改为透明 edge-to-edge；`npm.cmd test -- src/app.test.ts`、`npm.cmd test`、`npm.cmd run build`、`npm.cmd run sync`、JBR `:app:assembleDebug` 通过。
 - [x] T-020 首页搜索卡片移除、左滑动效、电量百分比和后台扫描优化：删除首页“准备搜索附近设备”卡片；刷新/查询改为后台扫描并通过进度回调增量更新列表或自动连接；已连接卡片静止时改为完全不透明，左滑取消连接增加拖动反馈、缓动和四角圆角；Live Status 下方第三个 chip 改为电量 `%`，按 `2.5V=0%`、`3.4V=100%` 线性换算并钳制；`npm.cmd test -- src/app.test.ts`、`npm.cmd test`、`npm.cmd run build`、`npm.cmd run sync`、JBR `:app:assembleDebug` 通过。
