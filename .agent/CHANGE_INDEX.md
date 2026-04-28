@@ -159,3 +159,109 @@
 - `.agent/templates/approval-record.md`
 - `.agent/plans/2026-04-27-plan-first-workflow.md`
 - `.agent/approvals/2026-04-27-plan-first-workflow.md`
+
+## M08 - T-011 Two-page UI convergence
+
+Date: 2026-04-27
+
+Summary: Rebuilt the Android MVP home and control pages as real DOM UI based on the HTML/image references, using the transparent MPPT controller asset as the device visual anchor. Kept the BLE/protocol/controller chain unchanged and retained the five MVP command entries plus hidden debug console.
+
+Key conclusions:
+- UI no longer relies on full-page screenshots as the main product surface.
+- Control page command buttons still map only to existing `DeviceController` business methods.
+- Chrome CDP mobile checks at 390px reported no horizontal overflow for both home and control visual states.
+
+Related logs:
+- `.agent/logs/2026-04-27-session-12.md`
+
+Key files:
+- `项目文件/android-mvp-capacitor/src/app.ts`
+- `项目文件/android-mvp-capacitor/src/styles.css`
+- `项目文件/android-mvp-capacitor/src/app.test.ts`
+- `项目文件/android-mvp-capacitor/public/assets/ui/mppt_gray_black_controller_transparent.png`
+- `.agent/handoffs/2026-04-27-UI-T-011.md`
+
+## M09 - AC632N_1 target device flow fix
+
+Date: 2026-04-27
+
+Summary: Locked the current BLE UI flow to `AC632N_1`, added auto-connect after discovering the target, sent one non-blocking `readStatus` after successful connect, and fixed connected-card navigation so tapping the already connected device opens the control page instead of reconnecting.
+
+Key conclusions:
+- Current validation hardware path is single-target: `AC632N_1` only.
+- Read-status is sent once after ready but still does not block waiting for BLE response.
+- Connected-card click now routes to detail/control when the card is the active ready device.
+
+Related logs:
+- `.agent/logs/2026-04-27-session-13.md`
+
+Key files:
+- `项目文件/android-mvp-capacitor/src/app.ts`
+- `项目文件/android-mvp-capacitor/src/app.test.ts`
+- `.agent/plans/2026-04-27-ac632n1-autoconnect.md`
+
+## M10 - T-016 UI reference realignment
+
+Date: 2026-04-28
+
+Summary: Reworked the Android MVP two-page UI to more closely match the provided reference images and HTML prototype while preserving the existing BLE/protocol/controller behavior.
+
+Key conclusions:
+- This was a UI-only pass. BLE, protocol, Android native, and `deviceController.ts` were not modified.
+- The current hardware validation path remains single-target: `AC632N_1` only.
+- The UI now uses reference-style light background, large Chinese page titles, rounded white cards, blue scan/connection states, green online states, and orange control emphasis.
+- Chrome CDP mobile checks at 390px reported no horizontal overflow for both home and control states.
+
+Related logs:
+- `.agent/logs/2026-04-28-session-01.md`
+
+Key files:
+- `项目文件/android-mvp-capacitor/src/app.ts`
+- `项目文件/android-mvp-capacitor/src/styles.css`
+- `项目文件/android-mvp-capacitor/src/app.test.ts`
+- `.agent/reports/screenshots/T-016-home-mobile-390x900-cdp.png`
+- `.agent/reports/screenshots/T-016-control-mobile-390x900-cdp.png`
+
+## M11 - T-017 UI navigation and compact layout polish
+
+Date: 2026-04-28
+
+Summary: Fixed the post-connection refresh/navigation bug and tightened the two-page MVP UI density after real-device feedback.
+
+Key conclusions:
+- Homepage `刷新` is now a list refresh only; it no longer re-enters the previous connected device detail page.
+- Control-page entry now uses WebView history, so Android/system Back returns to the homepage before app exit.
+- Mock phone status chrome, the control-page three-dot placeholder, and the default “等待操作” card were removed.
+- Homepage device cards and control-page detail cards were compacted with smaller typography while preserving BLE/protocol behavior.
+
+Related logs:
+- `.agent/logs/2026-04-28-session-02.md`
+
+Key files:
+- `项目文件/android-mvp-capacitor/src/app.ts`
+- `项目文件/android-mvp-capacitor/src/styles.css`
+- `项目文件/android-mvp-capacitor/src/app.test.ts`
+- `.agent/reports/screenshots/2026-04-28-t017-home.png`
+
+## M12 - T-018 Android back dispatch and Live Status layout
+
+Date: 2026-04-28
+
+Summary: Added Android native back dispatch into the WebView and refined status presentation to match the user-provided Live Status reference.
+
+Key conclusions:
+- Web history alone was insufficient for vivo/Android right-edge system back; native `MainActivity` now delegates back events to `window.solarRemoteHandleNativeBack()`.
+- Control-page native back returns to homepage; homepage native back exits.
+- Control-page status card follows the `LIVE STATUS` structure from the screenshot/HTML reference.
+- Nearby-device cards now include 2x2 metrics: current mode, battery voltage, solar voltage, and brightness.
+- Missing protocol fields are shown as `-` instead of fabricated values.
+
+Related logs:
+- `.agent/logs/2026-04-28-session-03.md`
+
+Key files:
+- `项目文件/android-mvp-capacitor/android/app/src/main/java/com/solar/remote/MainActivity.java`
+- `项目文件/android-mvp-capacitor/src/app.ts`
+- `项目文件/android-mvp-capacitor/src/styles.css`
+- `项目文件/android-mvp-capacitor/src/app.test.ts`
+- `.agent/reports/screenshots/2026-04-28-t018-home.png`

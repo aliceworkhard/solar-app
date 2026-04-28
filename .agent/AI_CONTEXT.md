@@ -1,6 +1,6 @@
 # AI Context
 
-更新时间：2026-04-27
+更新时间：2026-04-28
 
 ## Project Purpose
 
@@ -38,7 +38,7 @@
 
 ## Current Verification State
 
-- `npm.cmd test`：最近一次通过，5 个测试文件、27 个测试通过。
+- `npm.cmd test`：最近一次通过，5 个测试文件、38 个测试通过。
 - T-003 响应等待策略：5 条 MVP 命令默认不等待回包；显式 `waitForResponse=true` 路径已补单测，写入失败会清理 pending 后重试。
 - T-004 两页业务 UI：主页扫描/快连/连接反馈可见，控制页 5 个 RF 命令一一映射到 `DeviceController`，调试台隐藏保留。
 - T-002 前置接入：App 面向方法已锁定 5 条最小命令集 HEX，并有 `CommandBuilder` 与 `DeviceController` 写入链路测试覆盖。
@@ -72,6 +72,60 @@
 - Docs Release Agent：负责文档、日志、上传记录和交付说明。
 
 并行开发时必须遵守 `.agent/OWNERSHIP.md`，特别是 `deviceController.ts` 不能多人并行修改。
+
+## T-011 UI Convergence Baseline
+
+- Date: 2026-04-27.
+- Scope: UI-only convergence for the two-page MVP; BLE, protocol, and `deviceController.ts` were not modified.
+- Result: device home page and control page are now real DOM UI, not full-page screenshot backgrounds.
+- Asset: `public/assets/ui/mppt_gray_black_controller_transparent.png` inside the Android MVP Capacitor project.
+- Commands retained: read status, read params, power toggle, brightness up, brightness down.
+- Debug console remains hidden and is still available through the existing hidden tap flow.
+- Verification: `npm.cmd test` passed 5 files / 28 tests; `npm.cmd run build` passed; Chrome CDP 390px checks showed `scrollWidth=390` for both home and control visual states.
+
+## T-015 Target Device Flow Baseline
+
+- Date: 2026-04-27.
+- Target BLE name locked to `AC632N_1`; other scanned devices are filtered before display/connect.
+- Scan flow can auto-connect the target device after discovery.
+- After successful connect, the app sends one `readStatus` command through the existing non-blocking command path.
+- Returning to the nearby-device page and tapping the already connected target opens the control page instead of reconnecting.
+- Verification: `npm.cmd test` passed 5 files / 31 tests; `npm.cmd run build` passed.
+
+
+## T-016 UI Reference Realignment Baseline
+
+- Date: 2026-04-28.
+- Scope: UI-only second pass to better match `01_device_home_page.png`, `02_device_detail_control_page.png`, and `HTML参考/app.html`.
+- Result: home page now follows the reference-style title/search/device-card/status overview structure; control page now follows the reference-style top bar, segmented tabs, device detail card, telemetry grid, mode selector, and control panel.
+- Preserved behavior: only `AC632N_1` is displayed/connectable; auto-connect, connect-success read-status send, connected-card navigation, hidden debug console, and five MVP command calls remain unchanged.
+- Verification: TDD red check failed before implementation; `npm.cmd test -- src/app.test.ts` passed 11 tests; `npm.cmd test` passed 5 files / 32 tests; `npm.cmd run build` passed; Chrome CDP 390px checks reported `scrollWidth=390` for both home and control states.
+- Screenshots: `.agent/reports/screenshots/T-016-home-mobile-390x900-cdp.png`, `.agent/reports/screenshots/T-016-control-mobile-390x900-cdp.png`.
+
+## T-017 UI Navigation And Compact Layout Baseline
+
+- Date: 2026-04-28.
+- Scope: UI/navigation-only bugfix after T-016 real-device feedback.
+- Behavior changed: homepage `刷新` now only refreshes the nearby-device list and never opens the previous connected device detail page by itself.
+- Back behavior: entering the control page pushes WebView history; Android/system Back returns to the homepage before allowing app exit.
+- Removed placeholders: in-app mock phone status bar, control-page three-dot menu placeholder, and default “等待操作” feedback card.
+- Visual density: homepage device cards and control-page device status cards are more compact; the global typography scale is reduced.
+- Preserved behavior: `AC632N_1` whitelist, scan auto-connect path, connect-success `readStatus` send, connected-card detail navigation, hidden debug console, and five MVP command calls remain unchanged.
+- Verification: TDD red check failed before implementation; `npm.cmd test -- src/app.test.ts` passed 14 tests; `npm.cmd test` passed 5 files / 35 tests; `npm.cmd run build` passed; Chrome 430px homepage screenshot was captured.
+- Screenshot: `.agent/reports/screenshots/2026-04-28-t017-home.png`.
+
+## T-018 Android Back Dispatch And Live Status Baseline
+
+- Date: 2026-04-28.
+- Scope: Android native back bridge plus UI status-card refinement.
+- Native back: `MainActivity.java` now intercepts Android back via `OnBackPressedCallback`, calls `window.solarRemoteHandleNativeBack()` in the WebView, consumes the event when JS returns `handled`, and exits when JS returns `exit`.
+- JS back: control-page native back returns to homepage; homepage native back allows app exit.
+- Control page: read-status area now uses a Live Status card pattern based on the user screenshot and `HTML参考/app.html`.
+- Data honesty: unavailable protocol fields such as battery percentage, morning time, and lights-off time display `-`; they are not fabricated as `100%`, `06:00`, or `07:00`.
+- Nearby device cards: each card now has 2x2 metrics for current mode, battery voltage, solar voltage, and brightness; only the active connected target shows real status values.
+- Verification: TDD red check failed before implementation; `npm.cmd test -- src/app.test.ts` passed 17 tests; `npm.cmd test` passed 5 files / 38 tests; `npm.cmd run build` passed; `npm.cmd run sync` passed; temporary Android Studio JBR Gradle `:app:compileDebugJavaWithJavac` and `:app:assembleDebug` passed.
+- Screenshot: `.agent/reports/screenshots/2026-04-28-t018-home.png`.
+- Pending real-phone check: confirm vivo right-edge/system back gesture now returns from control page to homepage.
 
 ## Current Open Problems
 

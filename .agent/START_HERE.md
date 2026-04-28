@@ -77,3 +77,51 @@
 3. 如果是交接任务，写入 `.agent/handoffs/`。
 4. 如果改变当前事实，更新 `.agent/AI_CONTEXT.md`。
 5. 运行适合本次修改的验证命令，并记录不能运行的原因。
+
+## Current Best Next Step - After T-011
+
+T-011 is complete. The next agent should not redo the two-page UI convergence unless the user asks for visual revisions.
+
+Recommended next step:
+- Run the rebuilt Android app on a real phone and visually validate the new home/control pages with the BLE device connected.
+- If the visual pass is acceptable, proceed to T-001/T-002 formal sampling or T-010 continuous discovery tuning.
+
+Task packet moved:
+- `.agent/tasks/done/T-011-ui-convergence.md`
+
+Handoff:
+- `.agent/handoffs/2026-04-27-UI-T-011.md`
+
+## Current Best Next Step - After T-015
+
+T-015 is complete. The app is now intentionally locked to `AC632N_1` for the current hardware validation path.
+
+Recommended next step:
+- Rebuild/sync Android and run on the phone.
+- Confirm only `AC632N_1` appears, auto-connect runs, one `readStatus` is sent after ready, and tapping the connected card from the nearby-device page opens the detail page.
+
+## Current Best Next Step - After T-016
+
+T-016 is complete. The two-page MVP UI has been realigned toward the provided reference images.
+
+Recommended next step:
+- Rebuild/sync Android and visually validate on the phone with the real BLE device connected.
+- If visual direction is accepted, continue with formal T-001/T-002 sampling or targeted UI copy/spacing tweaks from real-device feedback.
+
+## Current Best Next Step - After T-017
+
+T-017 is complete. The latest UI pass fixed refresh/back navigation and reduced card/typography density.
+
+Recommended next step:
+- Rebuild/sync Android and verify on the phone that homepage `刷新` only refreshes, Android system Back returns from control page to homepage, and the compact cards are readable with a real connected `AC632N_1`.
+- If this visual/interaction pass is accepted, continue with T-001/T-002 formal sampling or T-010 continuous discovery tuning.
+
+## Current Best Next Step - After T-018
+
+T-018 is complete. Android native back dispatch has been added, and the control-page status area now follows the Live Status reference layout.
+
+Recommended next step:
+- Install/run the freshly synced debug build on the vivo phone.
+- Verify right-edge/system back on the control page returns to the device homepage instead of exiting.
+- Verify read-status values update the Live Status card and the nearby-device 2x2 metrics.
+- If accepted, continue with T-001/T-002 formal sampling or T-010 continuous discovery tuning.

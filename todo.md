@@ -13,6 +13,8 @@
 
 ## Now
 
+- 当前没有正在实施的已批准任务。
+
 - [ ] T-001 补齐 20 次真机性能采样
   - 优先级：P0
   - 状态：Feasibility Passed；用户反馈使用 vivo X300 Pro 测试未发现扫描/连接/传输问题，正式 20 次采样与 P50/P90 后补
@@ -25,13 +27,6 @@
   - 涉及文件：`项目文件/最小命令集表.md`
   - 前置状态：App 已接入最新最小命令集，读状态命令为 `FF CE 06 00 0E 00 00 30 11`。
   - 验收标准：开/关、增加亮度、降低亮度、读参数、读状态各执行 10 次，记录是否有 notify、是否更新 UI、失败表现。
-
-- [ ] T-011 基于 HTML/图片收敛两页 MVP UI
-  - 优先级：P0
-  - 状态：Proposed（方案已写，等待确认后实施）
-  - 涉及文件：`HTML参考/app.html`、`mppt_app_design_assets/`、`项目文件/android-mvp-capacitor/src/app.ts`、`项目文件/android-mvp-capacitor/src/styles.css`、`项目文件/android-mvp-capacitor/src/app.test.ts`、`项目文件/android-mvp-capacitor/public/assets/ui/`
-  - 处理口径：吸收参考稿的信息层级与视觉语言，落到当前设备首页 + 设备详情控制页；不照搬 OTA、场景页、我的页和未接入协议的完整参数设置。
-  - 验收标准：首页和控制页按参考稿重构为真实 DOM UI；透明背景 MPPT 设备图接入；5 条 MVP 命令入口保留且反馈明确；调试台隐藏保留；不新增假功能；`npm.cmd test`、`npm.cmd run build` 通过；移动端截图检查无文字/按钮重叠。
 
 ## Next
 
@@ -76,6 +71,11 @@
 
 ## Recently Done
 
+- [x] T-018 Android back dispatch + Live Status layout + nearby-device 2x2 metrics: Android native back now calls WebView JS so control-page system/gesture back can return home before exit; control-page status area uses a Live Status card; nearby-device cards expose current mode, battery voltage, solar voltage, and brightness metrics; `npm.cmd test`, `npm.cmd run build`, `npm.cmd run sync`, temporary-JBR `:app:compileDebugJavaWithJavac`, and `:app:assembleDebug` passed. Needs real-phone gesture retest.
+- [x] T-017 UI navigation and compact layout polish: homepage refresh now only refreshes the device list, control-page entry uses WebView history so system Back returns home first, placeholder phone chrome / control-page dots / default waiting card were removed, home device cards and control detail cards were compacted, typography scale was reduced; `npm.cmd test`, `npm.cmd run build`, and Chrome 430px screenshot verification passed.
+- [x] T-016 UI reference realignment: home/control pages restyled closer to the provided reference images and HTML prototype; only `AC632N_1` remains visible/connectable; auto-connect/read-status/card navigation and five MVP commands preserved; `npm.cmd test`, `npm.cmd run build`, and Chrome CDP 390px overflow checks passed.
+- [x] T-015 AC632N_1 whitelist + auto-connect + connected-card navigation fix: only `AC632N_1` enters the UI list/connect flow; scan result can auto-connect the target; connect success sends one `readStatus`; tapping the already connected device card enters the control page instead of reconnecting; `npm.cmd test` and `npm.cmd run build` passed.
+- [x] T-011 UI convergence: two-page MVP UI rebuilt as real DOM, transparent MPPT device asset added, five MVP command entries and hidden debug console retained; `npm.cmd test` and `npm.cmd run build` passed; Chrome CDP 390px home/control checks reported no horizontal overflow.
 - [x] T-014 Agent 接力整理与测试模板：已记录 T-001/T-002 可行性冒烟测试通过；新增正式验收模板、T-011 UI 任务包、skill 使用说明和 session log；未改业务代码。
 - [x] T-012 读状态回传可读化：电池显示单位改为 `V`；`E1` 状态回传的工作时长、亮度、电池电压、电池电流、太阳能电压已转为结构化可读状态；短包不更新业务状态；测试与构建通过。
 - [x] T-013 Skill 白名单二次筛选与安装：已安装 `kb-retriever`、`web-design-engineer`、`gpt-image-2`、`requesting-code-review`、`receiving-code-review`、`security-best-practices`；已更新白名单与安装日志；`gpt-image-2` 作为图片工作流首选，但未覆盖系统 `.system/imagegen`。

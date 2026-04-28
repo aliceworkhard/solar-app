@@ -3,6 +3,8 @@ import { spacedHex } from "./utils/hex";
 import type { DeviceBrief, DeviceStatus, LogEntry } from "./types";
 
 type ViewName = "home" | "control";
+type BackNavigationResult = "home" | "exit";
+type NativeBackAction = "handled" | "exit";
 type FeedbackTone = "idle" | "pending" | "success" | "error";
 type BusinessCommandAction =
   | "readStatus"
@@ -11,11 +13,38 @@ type BusinessCommandAction =
   | "brightnessUp"
   | "brightnessDown";
 
+declare global {
+  interface Window {
+    solarRemoteHandleNativeBack?: () => NativeBackAction;
+  }
+}
+
 export interface BusinessCommand {
   id: string;
   label: string;
   description: string;
   action: BusinessCommandAction;
+}
+
+export interface LiveStatusModel {
+  caption: string;
+  modeLabel: string;
+  modeRaw: string;
+  batteryType: string;
+  batteryLevel: string;
+  workTime: string;
+  morningTime: string;
+  lightsOffTime: string;
+  brightness: string;
+  batteryVoltage: string;
+  loadCurrent: string;
+}
+
+export interface NearbyDeviceMetrics {
+  mode: string;
+  batteryVoltage: string;
+  solarVoltage: string;
+  power: string;
 }
 
 export const BUSINESS_COMMANDS: BusinessCommand[] = [
@@ -51,8 +80,68 @@ export const BUSINESS_COMMANDS: BusinessCommand[] = [
   }
 ];
 
+export const DEVICE_ASSET_SRC = "/assets/ui/mppt_gray_black_controller_transparent.png";
+export const TARGET_DEVICE_NAME = "AC632N_1";
+export const REFERENCE_UI_COPY = {
+  homeTitle: "设备",
+  homeSubtitle: "连接并管理您的 MPPT 设备",
+  scanIdle: "准备搜索附近设备",
+  scanSearching: "正在搜索附近设备...",
+  scanHint: "请确保设备已通电并开启蓝牙",
+  nearbySectionTitle: "附近设备",
+  controlTabs: ["设备状态", "控制面板"],
+  commandPanelTitle: "控制面板"
+} as const;
+export const REFERENCE_UI_CHROME = {
+  showMockStatusBar: false,
+  showControlMoreMenu: false,
+  showDefaultFeedbackCard: false
+} as const;
+
+export function shouldRefreshEnterControl(_status: DeviceStatus): boolean {
+  return false;
+}
+
+export function resolveBackNavigation(view: ViewName): BackNavigationResult {
+  return view === "control" ? "home" : "exit";
+}
+
+export function resolveNativeBackAction(view: ViewName): NativeBackAction {
+  return view === "control" ? "handled" : "exit";
+}
+
 export function isControlReady(status: DeviceStatus): boolean {
   return status.connectionState === "ready";
+}
+
+export function filterSupportedDevices<T extends DeviceBrief>(devices: T[]): T[] {
+  return devices.filter((device) => device.name.trim() === TARGET_DEVICE_NAME);
+}
+
+export function shouldOpenControlForConnectedDevice(
+  deviceId: string,
+  activeDeviceId: string,
+  status: DeviceStatus
+): boolean {
+  return (
+    isControlReady(status) &&
+    status.connected &&
+    Boolean(activeDeviceId) &&
+    deviceId.toLowerCase() === activeDeviceId.toLowerCase()
+  );
+}
+
+export function shouldAutoConnectSupportedDevice(
+  devices: DeviceBrief[],
+  status: DeviceStatus,
+  autoConnectInFlight: boolean
+): boolean {
+  return (
+    !autoConnectInFlight &&
+    !status.connected &&
+    !["connecting", "discovering", "subscribing"].includes(status.connectionState) &&
+    filterSupportedDevices(devices).length > 0
+  );
 }
 
 function formatFixedUnit(value: number | undefined, digits: number, unit: string): string {
@@ -60,6 +149,57 @@ function formatFixedUnit(value: number | undefined, digits: number, unit: string
     return "-";
   }
   return `${value.toFixed(digits)}${unit}`;
+}
+
+function formatModeLabel(mode: string): string {
+  if (mode === "radar") {
+    return "雷达";
+  }
+  if (mode === "time") {
+    return "时控";
+  }
+  if (mode === "average") {
+    return "平均";
+  }
+  return mode || "-";
+}
+
+export function createLiveStatusModel(status: DeviceStatus): LiveStatusModel {
+  return {
+    caption: "LIVE STATUS",
+    modeLabel: formatModeLabel(status.mode),
+    modeRaw: status.mode || "-",
+    batteryType: "磷酸铁锂",
+    batteryLevel: "-",
+    workTime: formatWorkMinutes(status),
+    morningTime: "-",
+    lightsOffTime: "-",
+    brightness: `${status.power}%`,
+    batteryVoltage: formatBatteryVoltage(status),
+    loadCurrent: formatLoadCurrent(status)
+  };
+}
+
+export function createNearbyDeviceMetrics(
+  deviceId: string,
+  activeDeviceId: string,
+  status: DeviceStatus
+): NearbyDeviceMetrics {
+  const isActive = Boolean(activeDeviceId) && deviceId.toLowerCase() === activeDeviceId.toLowerCase();
+  if (!isActive || !status.connected) {
+    return {
+      mode: "-",
+      batteryVoltage: "-",
+      solarVoltage: "-",
+      power: "-"
+    };
+  }
+  return {
+    mode: status.mode || "-",
+    batteryVoltage: formatBatteryVoltage(status),
+    solarVoltage: formatSolarVoltage(status),
+    power: `${status.power}%`
+  };
 }
 
 export function formatWorkMinutes(status: DeviceStatus): string {
@@ -170,6 +310,8 @@ export class App {
   private debugVisible = false;
   private discoveryActive = false;
   private discoveryScanInFlight = false;
+  private autoConnectInFlight = false;
+  private historyInstalled = false;
   private discoveryTimer: ReturnType<typeof setTimeout> | null = null;
   private discoveryRound = 0;
 
@@ -181,10 +323,12 @@ export class App {
   }
 
   start(): void {
+    this.installBackNavigation();
     this.render();
     this.controller.onStatusChange((status) => {
       this.status = status;
       this.refreshStatus();
+      this.refreshDeviceList();
     });
     this.controller.onLogChange((logs) => {
       this.logs = logs;
@@ -193,83 +337,152 @@ export class App {
   }
 
   private render(): void {
+    const isControlView = this.view === "control";
+    const activeDeviceName = this.activeDeviceName();
+    const liveStatus = createLiveStatusModel(this.status);
     this.root.innerHTML = `
-      <div class="shell">
-        <header class="shell-header">
-          <div class="brand" id="brandTrigger">
-            <div class="brand-kicker">Solar Remote</div>
-            <h1>太阳能遥控器</h1>
+      <div class="shell ${isControlView ? "view-control" : "view-home"}">
+        <header class="app-header ${isControlView ? "detail" : "home"}">
+          <button class="back-link ${isControlView ? "visible" : ""}" id="backBtn" type="button" aria-label="返回">‹</button>
+          <div class="page-title" id="brandTrigger">
+            <h1>${isControlView ? activeDeviceName : REFERENCE_UI_COPY.homeTitle}</h1>
+            <p>${isControlView ? "设备状态与控制" : REFERENCE_UI_COPY.homeSubtitle}</p>
           </div>
-          <div class="conn-badge" id="connBadge">未连接</div>
+          <div class="top-actions">
+            <div class="conn-badge" id="connBadge">未连接</div>
+            <button class="scan-fab ${isControlView ? "hidden" : ""}" id="scanBtn" title="持续发现设备" type="button">+</button>
+          </div>
         </header>
-        <div class="feedback-bar" id="feedbackBar" role="status" aria-live="polite">等待操作</div>
 
         <main>
-          <section class="panel ${this.view === "home" ? "active" : ""}" id="homePanel">
-            <div class="visual-strip">
-              <img src="/assets/ui/01_device_home_page.png" alt="home reference" />
-            </div>
-            <div class="toolbar">
-              <button class="btn primary icon" id="scanBtn" title="持续发现设备">扫描设备</button>
-              <button class="btn ghost" id="quickConnectBtn" title="快速连接">快连最近</button>
-              <button class="btn ghost" id="disconnectBtn" title="断开连接">断开</button>
+          <section class="panel home-panel ${this.view === "home" ? "active" : ""}" id="homePanel">
+            <article class="scan-card">
+              <div class="bluetooth-mark">⌁</div>
+              <div>
+                <strong id="scanStateTitle">${REFERENCE_UI_COPY.scanIdle}</strong>
+                <span id="scanStateSub">${REFERENCE_UI_COPY.scanHint}</span>
+              </div>
+              <div class="scan-orbit" aria-hidden="true"></div>
+            </article>
+            <div class="inline-feedback" id="homeFeedback" role="status" aria-live="polite" hidden></div>
+
+            <div class="section-row device-section-title">
+              <h2>${REFERENCE_UI_COPY.nearbySectionTitle}</h2>
+              <button class="text-action" id="quickConnectBtn" type="button"><span aria-hidden="true">↻</span> 刷新</button>
             </div>
             <div class="chip stage-chip" id="connStageChip">连接阶段：idle</div>
             <div class="device-list" id="deviceList"></div>
-            <div class="quick-grid">
-              <div class="kv"><span>模式</span><strong id="modeValue">-</strong></div>
-              <div class="kv"><span>功率</span><strong id="powerValue">-</strong></div>
-              <div class="kv"><span>电池</span><strong id="batteryValue">-</strong></div>
-              <div class="kv"><span>工作时长</span><strong id="workTimeValue">-</strong></div>
-              <div class="kv"><span>负载电流</span><strong id="loadCurrentValue">-</strong></div>
-              <div class="kv"><span>太阳能</span><strong id="solarVoltageValue">-</strong></div>
-              <div class="kv"><span>固件</span><strong id="fwValue">-</strong></div>
-            </div>
-            <button class="btn primary wide" id="enterControlBtn" disabled>进入控制页</button>
+
+            <article class="home-summary-card">
+              <div class="summary-head">
+                <div>
+                  <span class="summary-label">当前设备</span>
+                  <strong id="homeConnectedName">${activeDeviceName}</strong>
+                </div>
+                <div class="summary-pills">
+                  <span id="homeSummaryStatus">等待连接</span>
+                  <span id="fwValue">-</span>
+                </div>
+              </div>
+              <div class="summary-device">
+                <img src="${DEVICE_ASSET_SRC}" alt="MPPT 控制器" />
+                <div class="summary-device-copy">
+                    <span>目标设备</span>
+                  <strong>${TARGET_DEVICE_NAME}</strong>
+                  <p>当前仅显示验证设备，避免误连。</p>
+                </div>
+              </div>
+              <div class="quick-grid">
+                <div class="kv"><span>已开灯时间</span><strong id="workTimeValue">-</strong></div>
+                <div class="kv"><span>感应模式</span><strong id="modeValue">-</strong></div>
+                <div class="kv"><span>亮度</span><strong id="powerValue">-</strong></div>
+                <div class="kv"><span>电池电压</span><strong id="batteryValue">-</strong></div>
+                <div class="kv"><span>负载电流</span><strong id="loadCurrentValue">-</strong></div>
+                <div class="kv"><span>太阳能电压</span><strong id="solarVoltageValue">-</strong></div>
+              </div>
+              <div class="summary-actions">
+                <button class="btn primary wide" id="enterControlBtn" disabled>进入控制页</button>
+                <button class="btn ghost wide" id="disconnectBtn" title="断开连接">断开</button>
+              </div>
+            </article>
           </section>
 
-          <section class="panel ${this.view === "control" ? "active" : ""}" id="controlPanel">
-            <div class="visual-strip">
-              <img src="/assets/ui/02_device_detail_control_page.png" alt="control reference" />
+          <section class="panel control-panel ${this.view === "control" ? "active" : ""}" id="controlPanel">
+            <div class="detail-tabs" aria-label="页面分组">
+              <span class="active">${REFERENCE_UI_COPY.controlTabs[0]}</span>
+              <span>${REFERENCE_UI_COPY.controlTabs[1]}</span>
             </div>
-            <div class="toolbar">
-              <button class="btn ghost" id="backBtn">返回</button>
-              <div class="chip">写入方式：<span id="writeTypeValue">-</span></div>
-            </div>
-
             <div class="control-stack">
-              <div class="status-slab">
-                <div><span>当前模式</span><strong id="controlModeValue">-</strong></div>
-                <div><span>当前功率</span><strong id="controlPowerValue">-</strong></div>
-                <div><span>电池</span><strong id="controlBatteryValue">-</strong></div>
-                <div><span>工作时长</span><strong id="controlWorkTimeValue">-</strong></div>
-                <div><span>负载电流</span><strong id="controlLoadCurrentValue">-</strong></div>
-                <div><span>太阳能</span><strong id="controlSolarVoltageValue">-</strong></div>
-              </div>
+              <article class="detail-device-card live-status-card">
+                <div class="live-status-top">
+                  <div class="live-status-main">
+                    <div class="live-status-caption-row">
+                      <span class="live-status-dot" aria-hidden="true"></span>
+                      <p id="liveStatusCaption">${liveStatus.caption}</p>
+                    </div>
+                    <strong id="controlModeValue" class="live-status-title">${liveStatus.modeLabel}</strong>
+                    <p class="live-status-label">
+                      电池类型 <b id="liveBatteryTypeValue">${liveStatus.batteryType}</b>
+                    </p>
+                    <p class="live-status-device">
+                      <span id="detailTitleValue">${activeDeviceName}</span>
+                      <span id="detailSerialValue">${this.activeDeviceSerial()}</span>
+                    </p>
+                  </div>
+                  <div class="live-status-side">
+                    <span class="live-status-pill">电池剩余 <b id="liveBatteryLevelValue">${liveStatus.batteryLevel}</b></span>
+                    <span class="live-status-sub">已开灯 <b id="liveWorkTimeValue">${liveStatus.workTime}</b></span>
+                    <span class="live-status-sub">最后刷新 <b id="lastUpdatedValue">${this.formatLastUpdated()}</b></span>
+                  </div>
+                </div>
 
-              <div class="seg" id="modeSeg">
-                <button data-mode="radar" class="seg-btn">雷达</button>
-                <button data-mode="time" class="seg-btn">时控</button>
-                <button data-mode="average" class="seg-btn">平均</button>
-              </div>
+                <div class="live-status-time-grid">
+                  <div class="live-status-mini">
+                    <span><i class="metric-icon amber" aria-hidden="true"></i>晨亮时间</span>
+                    <strong id="morningTimeValue">${liveStatus.morningTime}</strong>
+                  </div>
+                  <div class="live-status-mini">
+                    <span><i class="metric-icon slate" aria-hidden="true"></i>关灯时间</span>
+                    <strong id="lightsOffTimeValue">${liveStatus.lightsOffTime}</strong>
+                  </div>
+                </div>
 
-              <div class="range-wrap">
-                <label for="powerSlider">功率参数</label>
-                <input id="powerSlider" type="range" min="0" max="100" value="30" />
-                <div class="range-value"><span id="powerSliderValue">30%</span></div>
-              </div>
+                <div class="live-status-chip-grid">
+                  <div class="live-status-chip"><i class="metric-icon amber" aria-hidden="true"></i>亮度 <strong id="controlPowerValue">${liveStatus.brightness}</strong></div>
+                  <div class="live-status-chip"><i class="metric-icon sky" aria-hidden="true"></i>电压 <strong id="controlBatteryValue">${liveStatus.batteryVoltage}</strong></div>
+                  <div class="live-status-chip"><i class="metric-icon indigo" aria-hidden="true"></i>电流 <strong id="controlLoadCurrentValue">${liveStatus.loadCurrent}</strong></div>
+                </div>
 
-              <div class="command-grid">
-                ${BUSINESS_COMMANDS.map(
-                  (command) => `
-                    <button class="btn command-btn" id="${command.id}" data-action="${command.action}">
-                      <span>${command.label}</span>
-                      <small>${command.description}</small>
-                    </button>
-                  `
-                ).join("")}
-              </div>
-              <div class="result result-live" id="resultArea">等待操作</div>
+                <div class="live-status-meta" aria-label="连接状态">
+                  <span>连接阶段 <b id="controlConnectionStateValue">${this.status.connectionState}</b></span>
+                  <span>固件 <b id="detailFwValue">${this.status.fwVersion || "-"}</b></span>
+                  <span>太阳能 <b id="controlSolarVoltageValue">${formatSolarVoltage(this.status)}</b></span>
+                </div>
+
+                <div class="seg readonly" id="modeSeg" aria-label="模式展示">
+                  <button data-mode="radar" class="seg-btn" type="button">雷达模式</button>
+                  <button data-mode="time" class="seg-btn" type="button">时控模式</button>
+                  <button data-mode="average" class="seg-btn" type="button">平均模式</button>
+                </div>
+              </article>
+
+              <article class="mvp-command-card">
+                <div class="section-row">
+                  <h2>${REFERENCE_UI_COPY.commandPanelTitle}</h2>
+                  <span class="write-chip">写入方式：<b id="writeTypeValue">-</b></span>
+                </div>
+                <div class="command-grid">
+                  ${BUSINESS_COMMANDS.map(
+                    (command) => `
+                      <button class="btn command-btn" id="${command.id}" data-action="${command.action}">
+                        <span>${command.label}</span>
+                        <small>${command.description}</small>
+                      </button>
+                    `
+                  ).join("")}
+                </div>
+                <div class="result result-live" id="resultArea" hidden></div>
+              </article>
             </div>
           </section>
 
@@ -309,19 +522,16 @@ export class App {
       void this.toggleContinuousDiscovery();
     });
     this.byId("quickConnectBtn").addEventListener("click", () => {
-      void this.quickConnectPreferred();
+      void this.refreshDeviceDiscovery();
     });
     this.byId("disconnectBtn").addEventListener("click", () => {
       void this.disconnectDevice();
     });
     this.byId("enterControlBtn").addEventListener("click", () => {
-      this.stopContinuousDiscovery("已进入控制页，持续发现已暂停");
-      this.view = "control";
-      this.render();
+      this.openControlPage("已进入控制页，持续发现已暂停");
     });
     this.byId("backBtn").addEventListener("click", () => {
-      this.view = "home";
-      this.render();
+      this.navigateHome();
     });
     for (const command of BUSINESS_COMMANDS) {
       this.byId(command.id).addEventListener("click", () => {
@@ -338,18 +548,8 @@ export class App {
     });
     this.byId("rawSendBtn").addEventListener("click", () => void this.handleRawSend());
 
-    const slider = this.byId("powerSlider") as HTMLInputElement;
-    const sliderValue = this.byId("powerSliderValue");
-    slider.addEventListener("input", () => {
-      sliderValue.textContent = `${slider.value}%`;
-    });
-
     const modeButtons = this.root.querySelectorAll<HTMLButtonElement>("#modeSeg .seg-btn");
     modeButtons.forEach((button) => {
-      button.addEventListener("click", () => {
-        modeButtons.forEach((item) => item.classList.remove("active"));
-        button.classList.add("active");
-      });
       if (button.dataset.mode === this.status.mode) {
         button.classList.add("active");
       }
@@ -404,7 +604,7 @@ export class App {
         allowFallbackNoPrefix: true,
         onProgress: (devices, meta) => {
           roundUsedFallback = meta.usedFallbackNoPrefix;
-          this.devices = mergeDiscoveryDevices(this.devices, devices, {
+          this.mergeSupportedDevices(devices, {
             activeDeviceId: this.activeDeviceId,
             now: Date.now(),
             scanRound: round,
@@ -419,14 +619,17 @@ export class App {
           }
         }
       });
-      this.devices = mergeDiscoveryDevices(this.devices, result, {
+      this.mergeSupportedDevices(result, {
         activeDeviceId: this.activeDeviceId,
         now: Date.now(),
         scanRound: round,
         usedFallback: roundUsedFallback
       });
       this.refreshDeviceList();
-      this.setResult(`第 ${round} 轮完成：当前列表 ${this.devices.length} 台`, "success");
+      const didAutoConnect = await this.autoConnectSupportedDevice(this.devices, `发现 ${TARGET_DEVICE_NAME}，正在自动连接`);
+      if (!didAutoConnect) {
+        this.setResult(`第 ${round} 轮完成：当前列表 ${this.devices.length} 台`, "success");
+      }
     } catch (error) {
       this.setResult(`持续发现失败：${this.errorMessage(error)}`, "error");
     } finally {
@@ -449,36 +652,19 @@ export class App {
     }, DISCOVERY_INTERVAL_MS);
   }
 
-  private shouldPauseDiscoveryRound(): boolean {
-    return ["connecting", "discovering", "subscribing"].includes(this.status.connectionState);
-  }
-
-  private async quickConnectPreferred(): Promise<void> {
+  private async refreshDeviceDiscovery(): Promise<void> {
+    if (shouldRefreshEnterControl(this.status)) {
+      this.openControlPage();
+      return;
+    }
     try {
-      this.setResult("正在尝试快速连接最近设备...", "pending");
-      const quickConnected = await this.controller.quickConnect();
-      if (quickConnected) {
-        this.activeDeviceId = this.controller.getRecentDeviceId();
-        this.devices = mergeDiscoveryDevices(this.devices, [], {
-          activeDeviceId: this.activeDeviceId,
-          now: Date.now(),
-          scanRound: this.discoveryRound,
-          usedFallback: false
-        });
-        this.setResult("快速连接成功", "success");
-        this.refreshStatus();
-        this.refreshDeviceList();
-        this.refreshUuidSelectors();
-        return;
-      }
-
-      this.setResult("快连失败，自动扫描并连接信号最强设备...", "pending");
+      this.setResult(`正在刷新 ${TARGET_DEVICE_NAME}...`, "pending");
       const devices = await this.controller.scan({
-        quickWindowMs: 1500,
-        fullWindowMs: 4200,
+        quickWindowMs: 1200,
+        fullWindowMs: 2800,
         allowFallbackNoPrefix: true,
         onProgress: (devices) => {
-          this.devices = mergeDiscoveryDevices(this.devices, devices, {
+          this.mergeSupportedDevices(devices, {
             activeDeviceId: this.activeDeviceId,
             now: Date.now(),
             scanRound: this.discoveryRound,
@@ -487,21 +673,54 @@ export class App {
           this.refreshDeviceList();
         }
       });
-      this.devices = mergeDiscoveryDevices(this.devices, devices, {
+      this.mergeSupportedDevices(devices, {
         activeDeviceId: this.activeDeviceId,
         now: Date.now(),
         scanRound: this.discoveryRound,
         usedFallback: false
       });
       this.refreshDeviceList();
-      const strongest = this.devices.find((item) => !item.isStale) ?? this.devices[0];
-      if (!strongest) {
-        this.setResult("未发现可连接设备", "error");
-        return;
-      }
-      await this.connectDevice(strongest);
+      this.setResult(
+        this.status.connected ? "列表已刷新，当前设备保持连接" : `刷新完成：发现 ${this.devices.length} 台目标设备`,
+        "success"
+      );
     } catch (error) {
-      this.setResult(`快连失败：${this.errorMessage(error)}`, "error");
+      this.setResult(`刷新失败：${this.errorMessage(error)}`, "error");
+    }
+  }
+
+  private shouldPauseDiscoveryRound(): boolean {
+    return ["connecting", "discovering", "subscribing"].includes(this.status.connectionState);
+  }
+
+  private mergeSupportedDevices(incomingDevices: DeviceBrief[], context: DiscoveryMergeContext): void {
+    this.devices = mergeDiscoveryDevices(
+      filterSupportedDevices(this.devices),
+      filterSupportedDevices(incomingDevices),
+      context
+    );
+  }
+
+  private firstSupportedDevice(devices: DeviceBrief[]): DeviceBrief | undefined {
+    return filterSupportedDevices(devices)[0];
+  }
+
+  private async autoConnectSupportedDevice(devices: DeviceBrief[], message: string): Promise<boolean> {
+    if (!shouldAutoConnectSupportedDevice(devices, this.status, this.autoConnectInFlight)) {
+      return false;
+    }
+    const target = this.firstSupportedDevice(devices);
+    if (!target) {
+      return false;
+    }
+    this.autoConnectInFlight = true;
+    this.stopContinuousDiscovery(message);
+    try {
+      await this.connectDevice(target);
+      return true;
+    } finally {
+      this.autoConnectInFlight = false;
+      this.refreshScanControls();
     }
   }
 
@@ -517,9 +736,10 @@ export class App {
       this.refreshDeviceList();
       this.setResult(`连接 ${device.name}...`, "pending");
       await this.controller.connectAndPrepare(device.deviceId);
-      this.setResult("连接成功并已订阅通知", "success");
       this.refreshStatus();
+      this.refreshDeviceList();
       this.refreshUuidSelectors();
+      await this.requestInitialStatusRefresh();
     } catch (error) {
       this.activeDeviceId = "";
       this.setResult(`连接失败：${this.errorMessage(error)}`, "error");
@@ -576,35 +796,53 @@ export class App {
 
   private refreshDeviceList(): void {
     const list = this.byId("deviceList");
+    this.devices = filterSupportedDevices(this.devices);
     if (!this.devices.length) {
-      list.innerHTML = `<div class="device-empty">暂无设备，点击扫描设备开始持续发现</div>`;
+      list.innerHTML = `<div class="device-empty">未发现 ${TARGET_DEVICE_NAME}，点击右上角 + 或刷新重新搜索</div>`;
       return;
     }
-    this.devices = mergeDiscoveryDevices(this.devices, [], {
+    this.mergeSupportedDevices([], {
       activeDeviceId: this.activeDeviceId,
       now: Date.now(),
       scanRound: this.discoveryRound,
       usedFallback: false
     });
     list.innerHTML = this.devices
-      .map(
-        (device, index) => `
-        <button class="device-item ${index === 0 ? "best" : ""} ${device.isConnected ? "connected" : ""} ${device.isStale ? "stale" : ""}" data-device-id="${device.deviceId}">
-          <div class="device-name">
-            <span>${device.name}</span>
-            ${device.isConnected ? `<em>已连接</em>` : device.isStale ? `<em>最近见过</em>` : ""}
-          </div>
-          <div class="device-sub">
-            MAC ${this.shortDeviceId(device.deviceId)} · RSSI ${device.rssi} dBm · 第 ${device.scanRound} 轮${index === 0 ? " · strongest" : ""}${device.usedFallback ? " · fallback" : ""}
-          </div>
+      .map((device, index) => {
+        const metrics = createNearbyDeviceMetrics(device.deviceId, this.activeDeviceId, this.status);
+        return `
+        <button class="device-item compact ${index === 0 ? "best" : ""} ${device.isConnected ? "connected" : ""} ${device.isStale ? "stale" : ""}" data-device-id="${device.deviceId}">
+          <span class="device-art" aria-hidden="true">
+            <img src="${DEVICE_ASSET_SRC}" alt="" />
+          </span>
+          <span class="device-main">
+            <span class="device-name">
+              <strong>${device.name}</strong>
+              ${device.isConnected ? `<em>已连接</em>` : device.isStale ? `<em>最近见过</em>` : `<em>可连接</em>`}
+            </span>
+            <span class="device-sub">
+              序列号 ${this.shortDeviceId(device.deviceId)} · RSSI ${device.rssi} dBm${device.usedFallback ? " · fallback" : ""}
+            </span>
+            <span class="device-metrics" aria-label="设备状态">
+              <span><small>当前模式</small><b>${metrics.mode}</b></span>
+              <span><small>电池电压</small><b>${metrics.batteryVoltage}</b></span>
+              <span><small>太阳能电压</small><b>${metrics.solarVoltage}</b></span>
+              <span><small>亮度</small><b>${metrics.power}</b></span>
+            </span>
+          </span>
+          <span class="device-chevron" aria-hidden="true">›</span>
         </button>
-      `
-      )
+      `;
+      })
       .join("");
     list.querySelectorAll<HTMLButtonElement>(".device-item").forEach((button) => {
       button.addEventListener("click", () => {
         const target = this.devices.find((item) => item.deviceId === button.dataset.deviceId);
         if (target) {
+          if (shouldOpenControlForConnectedDevice(target.deviceId, this.activeDeviceId, this.status)) {
+            this.openControlPage("设备已连接，直接进入控制页");
+            return;
+          }
           void this.connectDevice(target);
         }
       });
@@ -616,11 +854,17 @@ export class App {
       return;
     }
     const ready = isControlReady(this.status);
+    const activeDeviceName = this.activeDeviceName();
+    const activeSerial = this.activeDeviceSerial();
+    const liveStatus = createLiveStatusModel(this.status);
+    const lastUpdatedText = this.formatLastUpdated();
     this.byId("connBadge").textContent = this.status.connected
       ? `已连接 (${this.status.connectionState})`
       : `状态: ${this.status.connectionState}`;
     this.byId("connBadge").classList.toggle("online", this.status.connected);
     this.byId("connStageChip").textContent = `连接阶段：${this.status.connectionState}`;
+    this.byId("homeConnectedName").textContent = activeDeviceName;
+    this.byId("homeSummaryStatus").textContent = this.status.connected ? `已连接 · ${this.status.connectionState}` : "等待连接";
     this.byId("modeValue").textContent = this.status.mode;
     this.byId("powerValue").textContent = `${this.status.power}%`;
     this.byId("batteryValue").textContent = formatBatteryVoltage(this.status);
@@ -628,12 +872,22 @@ export class App {
     this.byId("loadCurrentValue").textContent = formatLoadCurrent(this.status);
     this.byId("solarVoltageValue").textContent = formatSolarVoltage(this.status);
     this.byId("fwValue").textContent = this.status.fwVersion || "-";
-    this.byId("controlModeValue").textContent = this.status.mode;
-    this.byId("controlPowerValue").textContent = `${this.status.power}%`;
-    this.byId("controlBatteryValue").textContent = formatBatteryVoltage(this.status);
-    this.byId("controlWorkTimeValue").textContent = formatWorkMinutes(this.status);
-    this.byId("controlLoadCurrentValue").textContent = formatLoadCurrent(this.status);
+    this.byId("detailTitleValue").textContent = activeDeviceName;
+    this.byId("detailSerialValue").textContent = activeSerial;
+    this.byId("detailFwValue").textContent = this.status.fwVersion || "-";
+    this.byId("liveStatusCaption").textContent = liveStatus.caption;
+    this.byId("controlModeValue").textContent = liveStatus.modeLabel;
+    this.byId("liveBatteryTypeValue").textContent = liveStatus.batteryType;
+    this.byId("liveBatteryLevelValue").textContent = liveStatus.batteryLevel;
+    this.byId("liveWorkTimeValue").textContent = liveStatus.workTime;
+    this.byId("morningTimeValue").textContent = liveStatus.morningTime;
+    this.byId("lightsOffTimeValue").textContent = liveStatus.lightsOffTime;
+    this.byId("controlPowerValue").textContent = liveStatus.brightness;
+    this.byId("controlBatteryValue").textContent = liveStatus.batteryVoltage;
+    this.byId("controlLoadCurrentValue").textContent = liveStatus.loadCurrent;
     this.byId("controlSolarVoltageValue").textContent = formatSolarVoltage(this.status);
+    this.byId("controlConnectionStateValue").textContent = this.status.connectionState;
+    this.byId("lastUpdatedValue").textContent = lastUpdatedText;
     this.byId("writeTypeValue").textContent = this.controller.getWriteType();
     const modeButtons = this.root.querySelectorAll<HTMLButtonElement>("#modeSeg .seg-btn");
     modeButtons.forEach((button) => {
@@ -686,10 +940,16 @@ export class App {
       return;
     }
     const scanBtn = this.byId("scanBtn") as HTMLButtonElement;
-    scanBtn.textContent = this.discoveryActive ? "停止扫描" : "扫描设备";
+    const scanTitle = this.byId("scanStateTitle");
+    const scanSub = this.byId("scanStateSub");
+    scanBtn.textContent = this.discoveryActive ? "×" : "+";
     scanBtn.title = this.discoveryActive ? "停止持续发现" : "持续发现设备";
     scanBtn.classList.toggle("danger", this.discoveryActive);
     scanBtn.disabled = this.discoveryScanInFlight && !this.discoveryActive;
+    scanTitle.textContent = this.discoveryActive ? REFERENCE_UI_COPY.scanSearching : REFERENCE_UI_COPY.scanIdle;
+    scanSub.textContent = this.discoveryActive
+      ? `第 ${this.discoveryRound || 1} 轮扫描中，列表会自动增量刷新`
+      : REFERENCE_UI_COPY.scanHint;
   }
 
   private renderUuidOptions(
@@ -715,11 +975,18 @@ export class App {
     if (!this.root.childElementCount) {
       return;
     }
-    const resultNodes = this.root.querySelectorAll<HTMLElement>("#feedbackBar, .result-live");
+    const resultNodes = this.root.querySelectorAll<HTMLElement>(".result-live");
     resultNodes.forEach((node) => {
+      node.hidden = !message || tone === "idle";
       node.textContent = message;
       node.dataset.tone = tone;
     });
+    const homeFeedback = this.root.querySelector<HTMLElement>("#homeFeedback");
+    if (homeFeedback) {
+      homeFeedback.hidden = !message || tone === "idle";
+      homeFeedback.textContent = message;
+      homeFeedback.dataset.tone = tone;
+    }
   }
 
   private toggleDebugByTap(): void {
@@ -730,6 +997,66 @@ export class App {
     this.hiddenTapCount = 0;
     this.debugVisible = !this.debugVisible;
     this.render();
+  }
+
+  private openControlPage(message?: string, pushHistory = true): void {
+    this.stopContinuousDiscovery(message);
+    this.view = "control";
+    if (pushHistory && typeof window !== "undefined" && window.history.state?.solarRemoteView !== "control") {
+      window.history.pushState({ solarRemoteView: "control" }, "", "#control");
+    }
+    this.render();
+  }
+
+  private navigateHome(): void {
+    if (resolveBackNavigation(this.view) === "exit") {
+      return;
+    }
+    if (typeof window !== "undefined" && window.history.state?.solarRemoteView === "control") {
+      window.history.back();
+      return;
+    }
+    this.handleNativeBack();
+  }
+
+  private installBackNavigation(): void {
+    if (this.historyInstalled || typeof window === "undefined") {
+      return;
+    }
+    this.historyInstalled = true;
+    window.solarRemoteHandleNativeBack = () => this.handleNativeBack();
+    if (window.history.state?.solarRemoteView !== "home") {
+      window.history.replaceState({ solarRemoteView: "home" }, "", window.location.pathname + window.location.search);
+    }
+    window.addEventListener("popstate", (event) => {
+      const nextView = event.state?.solarRemoteView === "control" ? "control" : "home";
+      if (this.view === nextView) {
+        return;
+      }
+      this.view = nextView;
+      this.render();
+    });
+  }
+
+  private handleNativeBack(): NativeBackAction {
+    if (resolveNativeBackAction(this.view) === "exit") {
+      return "exit";
+    }
+    this.view = "home";
+    if (typeof window !== "undefined") {
+      window.history.replaceState({ solarRemoteView: "home" }, "", window.location.pathname + window.location.search);
+    }
+    this.render();
+    return "handled";
+  }
+
+  private async requestInitialStatusRefresh(): Promise<void> {
+    try {
+      const message = await this.controller.readStatus();
+      this.setResult(`连接成功，已发送读状态：${message}`, "success");
+    } catch (error) {
+      this.setResult(`连接成功，但读状态发送失败：${this.errorMessage(error)}`, "error");
+    }
   }
 
   private byId(id: string): HTMLElement {
@@ -745,6 +1072,29 @@ export class App {
       return error.message;
     }
     return String(error);
+  }
+
+  private activeDeviceName(): string {
+    if (!this.activeDeviceId || !this.status.connected) {
+      return "未连接设备";
+    }
+    const normalizedActiveId = this.activeDeviceId.toLowerCase();
+    const active = this.devices.find((device) => device.deviceId.toLowerCase() === normalizedActiveId);
+    return active?.name || "MPPT 控制器";
+  }
+
+  private activeDeviceSerial(): string {
+    if (!this.activeDeviceId || !this.status.connected) {
+      return "-";
+    }
+    return this.shortDeviceId(this.activeDeviceId);
+  }
+
+  private formatLastUpdated(): string {
+    if (!this.status.lastUpdatedAt) {
+      return "-";
+    }
+    return new Date(this.status.lastUpdatedAt).toLocaleTimeString("zh-CN", { hour12: false });
   }
 
   private shortDeviceId(deviceId: string): string {

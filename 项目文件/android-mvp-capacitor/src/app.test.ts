@@ -1,14 +1,26 @@
 import { describe, expect, it } from "vitest";
 import {
   BUSINESS_COMMANDS,
+  DEVICE_ASSET_SRC,
   DEVICE_STALE_AFTER_MS,
   DISCOVERY_INTERVAL_MS,
+  REFERENCE_UI_CHROME,
+  REFERENCE_UI_COPY,
+  TARGET_DEVICE_NAME,
+  createLiveStatusModel,
+  createNearbyDeviceMetrics,
+  filterSupportedDevices,
   formatBatteryVoltage,
   formatLoadCurrent,
   formatSolarVoltage,
   formatWorkMinutes,
   isControlReady,
-  mergeDiscoveryDevices
+  mergeDiscoveryDevices,
+  resolveNativeBackAction,
+  resolveBackNavigation,
+  shouldAutoConnectSupportedDevice,
+  shouldOpenControlForConnectedDevice,
+  shouldRefreshEnterControl
 } from "./app";
 import type { DeviceBrief, DeviceStatus } from "./types";
 
@@ -25,6 +37,25 @@ function status(connectionState: DeviceStatus["connectionState"]): DeviceStatus 
 }
 
 describe("App UI command model", () => {
+  it("keeps the two-page shell aligned to the provided Chinese reference screens", () => {
+    expect(REFERENCE_UI_COPY.homeTitle).toBe("设备");
+    expect(REFERENCE_UI_COPY.homeSubtitle).toBe("连接并管理您的 MPPT 设备");
+    expect(REFERENCE_UI_COPY.scanSearching).toBe("正在搜索附近设备...");
+    expect(REFERENCE_UI_COPY.nearbySectionTitle).toBe("附近设备");
+    expect(REFERENCE_UI_COPY.controlTabs).toEqual(["设备状态", "控制面板"]);
+    expect(REFERENCE_UI_COPY.commandPanelTitle).toBe("控制面板");
+  });
+
+  it("uses the extracted transparent MPPT controller image instead of a full-page screenshot as UI material", () => {
+    expect(DEVICE_ASSET_SRC).toBe("/assets/ui/mppt_gray_black_controller_transparent.png");
+  });
+
+  it("removes placeholder phone chrome and default waiting feedback from the app UI", () => {
+    expect(REFERENCE_UI_CHROME.showMockStatusBar).toBe(false);
+    expect(REFERENCE_UI_CHROME.showControlMoreMenu).toBe(false);
+    expect(REFERENCE_UI_CHROME.showDefaultFeedbackCard).toBe(false);
+  });
+
   it("maps the two-page control surface to the five RF MVP commands once each", () => {
     expect(BUSINESS_COMMANDS.map((command) => command.id)).toEqual([
       "readStatusBtn",
@@ -69,6 +100,93 @@ describe("App status formatting", () => {
 });
 
 describe("App discovery model", () => {
+  it("only allows the locked AC632N_1 device into the UI discovery list", () => {
+    const devices = [
+      device("D1", TARGET_DEVICE_NAME, -52),
+      device("D2", "AC632N_2", -42),
+      device("D3", "Other", -36),
+      device("D4", " AC632N_1 ", -58)
+    ];
+
+    expect(filterSupportedDevices(devices)).toEqual([
+      device("D1", TARGET_DEVICE_NAME, -52),
+      device("D4", " AC632N_1 ", -58)
+    ]);
+  });
+
+  it("opens the detail view instead of reconnecting when the active ready device card is tapped", () => {
+    expect(shouldOpenControlForConnectedDevice("D1", "D1", status("ready"))).toBe(true);
+    expect(shouldOpenControlForConnectedDevice("D1", "D2", status("ready"))).toBe(false);
+    expect(shouldOpenControlForConnectedDevice("D1", "D1", status("connecting"))).toBe(false);
+  });
+
+  it("auto-connects only when the locked target is present and no connection is active", () => {
+    expect(shouldAutoConnectSupportedDevice([device("D1", TARGET_DEVICE_NAME, -52)], status("idle"), false)).toBe(true);
+    expect(shouldAutoConnectSupportedDevice([device("D2", "AC632N_2", -42)], status("idle"), false)).toBe(false);
+    expect(shouldAutoConnectSupportedDevice([device("D1", TARGET_DEVICE_NAME, -52)], status("ready"), false)).toBe(false);
+    expect(shouldAutoConnectSupportedDevice([device("D1", TARGET_DEVICE_NAME, -52)], status("idle"), true)).toBe(false);
+  });
+
+  it("keeps refresh as a list refresh even when a target device is already connected", () => {
+    expect(shouldRefreshEnterControl(status("ready"))).toBe(false);
+    expect(shouldRefreshEnterControl(status("idle"))).toBe(false);
+  });
+
+  it("maps system back from control to home before allowing app exit", () => {
+    expect(resolveBackNavigation("control")).toBe("home");
+    expect(resolveBackNavigation("home")).toBe("exit");
+  });
+
+  it("consumes Android native back on the control page and allows exit from home", () => {
+    expect(resolveNativeBackAction("control")).toBe("handled");
+    expect(resolveNativeBackAction("home")).toBe("exit");
+  });
+
+  it("builds a Live Status model without fabricating unavailable protocol fields", () => {
+    const model = createLiveStatusModel({
+      ...status("ready"),
+      mode: "radar",
+      power: 85,
+      workMinutes: 27,
+      batteryVoltage: 12.8,
+      loadCurrentAmp: 1.5
+    });
+
+    expect(model.caption).toBe("LIVE STATUS");
+    expect(model.modeLabel).toBe("雷达");
+    expect(model.batteryType).toBe("磷酸铁锂");
+    expect(model.batteryLevel).toBe("-");
+    expect(model.workTime).toBe("27min");
+    expect(model.morningTime).toBe("-");
+    expect(model.lightsOffTime).toBe("-");
+    expect(model.brightness).toBe("85%");
+    expect(model.batteryVoltage).toBe("12.80V");
+    expect(model.loadCurrent).toBe("1.50A");
+  });
+
+  it("shows 2x2 nearby-device metrics only for the active connected target", () => {
+    const connectedStatus: DeviceStatus = {
+      ...status("ready"),
+      mode: "radar",
+      power: 56,
+      batteryVoltage: 12.34,
+      solarVoltage: 18.4
+    };
+
+    expect(createNearbyDeviceMetrics("D1", "D1", connectedStatus)).toEqual({
+      mode: "radar",
+      batteryVoltage: "12.34V",
+      solarVoltage: "18.4V",
+      power: "56%"
+    });
+    expect(createNearbyDeviceMetrics("D2", "D1", connectedStatus)).toEqual({
+      mode: "-",
+      batteryVoltage: "-",
+      solarVoltage: "-",
+      power: "-"
+    });
+  });
+
   it("keeps same-name devices separate by deviceId and preserves the connected device", () => {
     const firstRound = mergeDiscoveryDevices([], [device("A1", "AC632N", -60)], {
       activeDeviceId: "",
