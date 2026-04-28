@@ -7,11 +7,13 @@ import {
   REFERENCE_UI_CHROME,
   REFERENCE_UI_COPY,
   STATUS_POLL_INTERVAL_MS,
+  SWIPE_DISCONNECT_ACTION_WIDTH_PX,
   SWIPE_DISCONNECT_THRESHOLD_PX,
   TARGET_DEVICE_NAME,
   createLiveStatusModel,
   createNearbyDeviceMetrics,
   filterSupportedDevices,
+  formatBatteryPercent,
   formatBatteryVoltage,
   formatLoadCurrent,
   formatSolarVoltage,
@@ -22,6 +24,7 @@ import {
   resolveBackNavigation,
   resolveSwipeDisconnectState,
   shouldAutoConnectSupportedDevice,
+  shouldStartBackgroundDiscovery,
   shouldOpenControlForConnectedDevice,
   shouldPollReadStatus,
   shouldRefreshEnterControl
@@ -59,6 +62,7 @@ describe("App UI command model", () => {
     expect(REFERENCE_UI_CHROME.showControlMoreMenu).toBe(false);
     expect(REFERENCE_UI_CHROME.showDefaultFeedbackCard).toBe(false);
     expect(REFERENCE_UI_CHROME.showHomeSummaryCard).toBe(false);
+    expect(REFERENCE_UI_CHROME.showHomeScanCard).toBe(false);
     expect(REFERENCE_UI_CHROME.modeSelectorPlacement).toBe("control-panel-top");
   });
 
@@ -103,6 +107,15 @@ describe("App status formatting", () => {
     expect(formatLoadCurrent(readableStatus)).toBe("1.23A");
     expect(formatSolarVoltage(readableStatus)).toBe("18.4V");
   });
+
+  it("converts battery voltage to a clamped percentage for the Live Status chip", () => {
+    expect(formatBatteryPercent({ ...status("ready"), batteryVoltage: 3.4 })).toBe("100%");
+    expect(formatBatteryPercent({ ...status("ready"), batteryVoltage: 2.5 })).toBe("0%");
+    expect(formatBatteryPercent({ ...status("ready"), batteryVoltage: 2.95 })).toBe("50%");
+    expect(formatBatteryPercent({ ...status("ready"), batteryVoltage: 4.2 })).toBe("100%");
+    expect(formatBatteryPercent({ ...status("ready"), batteryVoltage: 2.1 })).toBe("0%");
+    expect(formatBatteryPercent(status("ready"))).toBe("-");
+  });
 });
 
 describe("App discovery model", () => {
@@ -138,6 +151,15 @@ describe("App discovery model", () => {
     expect(shouldRefreshEnterControl(status("idle"))).toBe(false);
   });
 
+  it("allows non-blocking background discovery while blocking duplicate or connection-phase scans", () => {
+    expect(shouldStartBackgroundDiscovery(status("idle"), false)).toBe(true);
+    expect(shouldStartBackgroundDiscovery(status("ready"), false)).toBe(true);
+    expect(shouldStartBackgroundDiscovery(status("idle"), true)).toBe(false);
+    expect(shouldStartBackgroundDiscovery(status("connecting"), false)).toBe(false);
+    expect(shouldStartBackgroundDiscovery(status("discovering"), false)).toBe(false);
+    expect(shouldStartBackgroundDiscovery(status("subscribing"), false)).toBe(false);
+  });
+
   it("maps system back from control to home before allowing app exit", () => {
     expect(resolveBackNavigation("control")).toBe("home");
     expect(resolveBackNavigation("home")).toBe("exit");
@@ -165,6 +187,7 @@ describe("App discovery model", () => {
     expect(model.workTime).toBe("27min");
     expect(model.brightness).toBe("85%");
     expect(model.batteryVoltage).toBe("12.80V");
+    expect(model.batteryPercent).toBe("100%");
     expect(model.loadCurrent).toBe("1.50A");
     expect(model.solarVoltage).toBe("18.6V");
     expect("batteryLevel" in model).toBe(false);
@@ -248,6 +271,7 @@ describe("App discovery model", () => {
 
   it("opens the disconnect action only after a deliberate left swipe on a connected card", () => {
     expect(SWIPE_DISCONNECT_THRESHOLD_PX).toBeGreaterThanOrEqual(60);
+    expect(SWIPE_DISCONNECT_ACTION_WIDTH_PX).toBe(96);
     expect(resolveSwipeDisconnectState(-SWIPE_DISCONNECT_THRESHOLD_PX, true)).toBe("open");
     expect(resolveSwipeDisconnectState(-20, true)).toBe("closed");
     expect(resolveSwipeDisconnectState(-SWIPE_DISCONNECT_THRESHOLD_PX, false)).toBe("closed");

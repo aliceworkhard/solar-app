@@ -166,3 +166,15 @@
 - Status polling: after ready, App sends non-blocking `readStatus` every 5 seconds; polling skips while a poll is already in flight or connection is not ready.
 - Verification: TDD red check failed first as expected; `npm.cmd test -- src/app.test.ts` passed 19 tests; `npm.cmd test` passed 5 files / 40 tests; `npm.cmd run build` passed; `npm.cmd run sync` passed; temporary Android Studio JBR `:app:assembleDebug` passed.
 - Pending real-phone check: confirm swipe-left disconnect behavior and confirm logs show one read-status TX every 5 seconds after ready.
+
+## T-020 Home Scan, Swipe, Battery Percent Baseline
+
+- Date: 2026-04-28.
+- Scope: UI/App-layer refinement only; BLE native, protocol HEX, Android native, and `deviceController.ts` were not changed.
+- Home page: removed the whole “准备搜索附近设备” scan preparation card.
+- Manual refresh/search: changed to a non-blocking background scan flow at the App layer; UI returns immediately, scan progress updates the device list, and target discovery can still auto-connect.
+- Connected nearby card: static state is fully opaque white so the hidden disconnect action is not visible until the card is swiped.
+- Swipe disconnect: red action now has four rounded corners, smoother easing, and pointer-drag feedback before release.
+- Live Status: lower third chip now shows battery percentage instead of refresh time; percentage is calculated from `batteryVoltage` by `2.5V=0%`, `3.4V=100%`, clamped to `0-100%`.
+- Verification: TDD red check failed first as expected; `npm.cmd test -- src/app.test.ts` passed 21 tests; `npm.cmd test` passed 5 files / 42 tests; `npm.cmd run build` passed; `npm.cmd run sync` passed; temporary Android Studio JBR `:app:assembleDebug` passed.
+- Pending real-phone check: verify no scan preparation card, connected card does not show the red action until swiped, swipe animation feels acceptable, battery percentage matches the displayed voltage, and refresh does not visibly block the page.

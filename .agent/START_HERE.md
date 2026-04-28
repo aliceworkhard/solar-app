@@ -133,3 +133,14 @@ T-019 is complete. The next real-phone check should focus on two behaviors:
 - Keep the device connected and ready, then verify the debug log shows one non-blocking `readStatus` TX every 5 seconds.
 
 If both pass, continue with formal T-001/T-002 sampling or longer BLE stability testing.
+
+## Current Best Next Step - After T-020
+
+T-020 is complete. The next real-phone check should focus on the latest UI/interaction pass:
+- Home page should no longer show the “准备搜索附近设备” preparation card.
+- Connected `AC632N_1` card should be opaque when idle; the red `取消连接` action should appear only after left swipe.
+- Swipe-left interaction should feel smoother and the red action should have four rounded corners.
+- Control-page Live Status lower chip should show battery percentage from `batteryVoltage` using `2.5V=0%` and `3.4V=100%`.
+- Tapping refresh/search should not visibly block the page while background scanning runs.
+
+If accepted on phone, continue with formal T-001/T-002 sampling or longer BLE stability testing.

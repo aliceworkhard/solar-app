@@ -71,6 +71,7 @@
 
 ## Recently Done
 
+- [x] T-020 首页搜索卡片移除、左滑动效、电量百分比和后台扫描优化：删除首页“准备搜索附近设备”卡片；刷新/查询改为后台扫描并通过进度回调增量更新列表或自动连接；已连接卡片静止时改为完全不透明，左滑取消连接增加拖动反馈、缓动和四角圆角；Live Status 下方第三个 chip 改为电量 `%`，按 `2.5V=0%`、`3.4V=100%` 线性换算并钳制；`npm.cmd test -- src/app.test.ts`、`npm.cmd test`、`npm.cmd run build`、`npm.cmd run sync`、JBR `:app:assembleDebug` 通过。
 - [x] T-019 UI 卡片收敛与 5s 读状态轮询：首页已移除“当前设备”整块；附近设备卡片 RSSI 移到右侧，4 项指标改为无框左右排版；已连接设备支持左滑显示“取消连接”；控制页 Live Status 改为电池电压、模式、太阳能电压等真实字段且不显示固件；模式按钮移到控制面板顶部；连接 ready 后每 5s 自动发送一次读状态；`npm.cmd test -- src/app.test.ts`、`npm.cmd test`、`npm.cmd run build`、`npm.cmd run sync`、JBR `:app:assembleDebug` 通过。
 - [x] T-018 Android back dispatch + Live Status layout + nearby-device 2x2 metrics: Android native back now calls WebView JS so control-page system/gesture back can return home before exit; control-page status area uses a Live Status card; nearby-device cards expose current mode, battery voltage, solar voltage, and brightness metrics; `npm.cmd test`, `npm.cmd run build`, `npm.cmd run sync`, temporary-JBR `:app:compileDebugJavaWithJavac`, and `:app:assembleDebug` passed. Needs real-phone gesture retest.
 - [x] T-017 UI navigation and compact layout polish: homepage refresh now only refreshes the device list, control-page entry uses WebView history so system Back returns home first, placeholder phone chrome / control-page dots / default waiting card were removed, home device cards and control detail cards were compacted, typography scale was reduced; `npm.cmd test`, `npm.cmd run build`, and Chrome 430px screenshot verification passed.

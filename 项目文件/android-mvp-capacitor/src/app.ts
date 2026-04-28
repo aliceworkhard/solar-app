@@ -35,6 +35,7 @@ export interface LiveStatusModel {
   workTime: string;
   brightness: string;
   batteryVoltage: string;
+  batteryPercent: string;
   loadCurrent: string;
   solarVoltage: string;
 }
@@ -96,6 +97,7 @@ export const REFERENCE_UI_CHROME = {
   showControlMoreMenu: false,
   showDefaultFeedbackCard: false,
   showHomeSummaryCard: false,
+  showHomeScanCard: false,
   modeSelectorPlacement: "control-panel-top"
 } as const;
 
@@ -116,10 +118,15 @@ export function isControlReady(status: DeviceStatus): boolean {
 }
 
 export const STATUS_POLL_INTERVAL_MS = 5000;
+export const SWIPE_DISCONNECT_ACTION_WIDTH_PX = 96;
 export const SWIPE_DISCONNECT_THRESHOLD_PX = 72;
 
 export function shouldPollReadStatus(status: DeviceStatus, pollInFlight: boolean): boolean {
   return status.connected && isControlReady(status) && !pollInFlight;
+}
+
+export function shouldStartBackgroundDiscovery(status: DeviceStatus, scanInFlight: boolean): boolean {
+  return !scanInFlight && !["connecting", "discovering", "subscribing"].includes(status.connectionState);
 }
 
 export function resolveSwipeDisconnectState(deltaX: number, isConnected: boolean): SwipeDisconnectState {
@@ -185,6 +192,7 @@ export function createLiveStatusModel(status: DeviceStatus): LiveStatusModel {
     workTime: formatWorkMinutes(status),
     brightness: `${status.power}%`,
     batteryVoltage: formatBatteryVoltage(status),
+    batteryPercent: formatBatteryPercent(status),
     loadCurrent: formatLoadCurrent(status),
     solarVoltage: formatSolarVoltage(status)
   };
@@ -227,6 +235,16 @@ export function formatWorkMinutes(status: DeviceStatus): string {
 
 export function formatBatteryVoltage(status: DeviceStatus): string {
   return formatFixedUnit(status.batteryVoltage, 2, "V");
+}
+
+export function formatBatteryPercent(status: DeviceStatus): string {
+  const voltage = status.batteryVoltage;
+  if (typeof voltage !== "number" || !Number.isFinite(voltage)) {
+    return "-";
+  }
+  const percent = ((voltage - 2.5) / (3.4 - 2.5)) * 100;
+  const clamped = Math.min(100, Math.max(0, Math.round(percent)));
+  return `${clamped}%`;
 }
 
 export function formatLoadCurrent(status: DeviceStatus): string {
@@ -370,14 +388,6 @@ export class App {
 
         <main>
           <section class="panel home-panel ${this.view === "home" ? "active" : ""}" id="homePanel">
-            <article class="scan-card">
-              <div class="bluetooth-mark">⌁</div>
-              <div>
-                <strong id="scanStateTitle">${REFERENCE_UI_COPY.scanIdle}</strong>
-                <span id="scanStateSub">${REFERENCE_UI_COPY.scanHint}</span>
-              </div>
-              <div class="scan-orbit" aria-hidden="true"></div>
-            </article>
             <div class="inline-feedback" id="homeFeedback" role="status" aria-live="polite" hidden></div>
 
             <div class="section-row device-section-title">
@@ -431,7 +441,7 @@ export class App {
                 <div class="live-status-chip-grid">
                   <div class="live-status-chip"><i class="metric-icon amber" aria-hidden="true"></i>亮度 <strong id="controlPowerValue">${liveStatus.brightness}</strong></div>
                   <div class="live-status-chip"><i class="metric-icon indigo" aria-hidden="true"></i>电流 <strong id="controlLoadCurrentValue">${liveStatus.loadCurrent}</strong></div>
-                  <div class="live-status-chip"><i class="metric-icon sky" aria-hidden="true"></i>刷新 <strong id="lastUpdatedChipValue">${this.formatLastUpdated()}</strong></div>
+                  <div class="live-status-chip"><i class="metric-icon sky" aria-hidden="true"></i>电量 <strong id="batteryPercentChipValue">${liveStatus.batteryPercent}</strong></div>
                 </div>
 
                 <div class="live-status-meta" aria-label="连接状态">
@@ -625,41 +635,72 @@ export class App {
     }, DISCOVERY_INTERVAL_MS);
   }
 
-  private async refreshDeviceDiscovery(): Promise<void> {
+  private refreshDeviceDiscovery(): void {
     if (shouldRefreshEnterControl(this.status)) {
       this.openControlPage();
       return;
     }
-    try {
-      this.setResult(`正在刷新 ${TARGET_DEVICE_NAME}...`, "pending");
-      const devices = await this.controller.scan({
+    if (!shouldStartBackgroundDiscovery(this.status, this.discoveryScanInFlight)) {
+      this.setResult(
+        this.discoveryScanInFlight ? "正在后台刷新附近设备..." : `当前连接阶段为 ${this.status.connectionState}，稍后再刷新`,
+        "pending"
+      );
+      this.refreshScanControls();
+      return;
+    }
+
+    this.discoveryScanInFlight = true;
+    this.discoveryRound += 1;
+    const round = this.discoveryRound;
+    this.refreshScanControls();
+    this.setResult(
+      this.status.connected ? "正在后台刷新附近设备，当前连接保持可用" : `正在后台搜索 ${TARGET_DEVICE_NAME}...`,
+      "pending"
+    );
+    this.refreshDeviceList();
+
+    void this.controller
+      .scan({
         quickWindowMs: 1200,
         fullWindowMs: 2800,
         allowFallbackNoPrefix: true,
-        onProgress: (devices) => {
+        onProgress: (devices, meta) => {
           this.mergeSupportedDevices(devices, {
             activeDeviceId: this.activeDeviceId,
             now: Date.now(),
-            scanRound: this.discoveryRound,
-            usedFallback: false
+            scanRound: round,
+            usedFallback: meta.usedFallbackNoPrefix
           });
           this.refreshDeviceList();
+          void this.autoConnectSupportedDevice(this.devices, `发现 ${TARGET_DEVICE_NAME}，正在自动连接`);
         }
+      })
+      .then(async (devices) => {
+        this.mergeSupportedDevices(devices, {
+          activeDeviceId: this.activeDeviceId,
+          now: Date.now(),
+          scanRound: round,
+          usedFallback: false
+        });
+        this.refreshDeviceList();
+        const didAutoConnect = await this.autoConnectSupportedDevice(
+          this.devices,
+          `发现 ${TARGET_DEVICE_NAME}，正在自动连接`
+        );
+        if (!didAutoConnect) {
+          this.setResult(
+            this.status.connected ? "列表已后台刷新，当前设备保持连接" : `刷新完成：发现 ${this.devices.length} 台目标设备`,
+            "success"
+          );
+        }
+      })
+      .catch((error) => {
+        this.setResult(`刷新失败：${this.errorMessage(error)}`, "error");
+      })
+      .finally(() => {
+        this.discoveryScanInFlight = false;
+        this.refreshScanControls();
       });
-      this.mergeSupportedDevices(devices, {
-        activeDeviceId: this.activeDeviceId,
-        now: Date.now(),
-        scanRound: this.discoveryRound,
-        usedFallback: false
-      });
-      this.refreshDeviceList();
-      this.setResult(
-        this.status.connected ? "列表已刷新，当前设备保持连接" : `刷新完成：发现 ${this.devices.length} 台目标设备`,
-        "success"
-      );
-    } catch (error) {
-      this.setResult(`刷新失败：${this.errorMessage(error)}`, "error");
-    }
   }
 
   private shouldPauseDiscoveryRound(): boolean {
@@ -850,14 +891,40 @@ export class App {
 
   private bindSwipeDisconnect(list: HTMLElement): void {
     list.querySelectorAll<HTMLElement>(".device-row-shell.connected").forEach((row) => {
+      const card = row.querySelector<HTMLElement>(".device-item");
       let startX = 0;
       let startY = 0;
       let tracking = false;
+      const resetDrag = () => {
+        row.classList.remove("dragging");
+        if (card) {
+          card.style.transform = "";
+        }
+      };
 
       row.addEventListener("pointerdown", (event) => {
         startX = event.clientX;
         startY = event.clientY;
         tracking = true;
+        row.setPointerCapture(event.pointerId);
+      });
+
+      row.addEventListener("pointermove", (event) => {
+        if (!tracking || !card) {
+          return;
+        }
+        const deltaX = event.clientX - startX;
+        const deltaY = event.clientY - startY;
+        if (Math.abs(deltaY) > Math.abs(deltaX)) {
+          return;
+        }
+        if (deltaX < 0 || this.swipedDeviceId === row.dataset.deviceId) {
+          const openOffset = this.swipedDeviceId === row.dataset.deviceId ? -SWIPE_DISCONNECT_ACTION_WIDTH_PX : 0;
+          const offset = Math.max(-SWIPE_DISCONNECT_ACTION_WIDTH_PX, Math.min(0, openOffset + deltaX));
+          row.classList.add("dragging");
+          card.style.transform = `translateX(${offset}px)`;
+          event.preventDefault();
+        }
       });
 
       row.addEventListener("pointerup", (event) => {
@@ -865,6 +932,7 @@ export class App {
           return;
         }
         tracking = false;
+        resetDrag();
         const deltaX = event.clientX - startX;
         const deltaY = event.clientY - startY;
         if (Math.abs(deltaY) > Math.abs(deltaX)) {
@@ -886,6 +954,7 @@ export class App {
 
       row.addEventListener("pointercancel", () => {
         tracking = false;
+        resetDrag();
       });
     });
   }
@@ -915,7 +984,7 @@ export class App {
     this.byId("liveSolarVoltageValue").textContent = liveStatus.solarVoltage;
     this.byId("controlPowerValue").textContent = liveStatus.brightness;
     this.byId("controlLoadCurrentValue").textContent = liveStatus.loadCurrent;
-    this.byId("lastUpdatedChipValue").textContent = lastUpdatedText;
+    this.byId("batteryPercentChipValue").textContent = liveStatus.batteryPercent;
     this.byId("controlConnectionStateValue").textContent = this.status.connectionState;
     this.byId("liveDeviceNameValue").textContent = activeDeviceName;
     this.byId("lastUpdatedValue").textContent = lastUpdatedText;
@@ -961,7 +1030,10 @@ export class App {
     this.renderUuidOptions(notifySelect, candidates.notifyUUIDs, selected.notifyUUID);
 
     applyBtn.disabled = !this.status.connected || !candidates.writeUUIDs.length || !candidates.notifyUUIDs.length;
-    (this.byId("quickConnectBtn") as HTMLButtonElement).disabled = this.status.connectionState === "connecting";
+    (this.byId("quickConnectBtn") as HTMLButtonElement).disabled = !shouldStartBackgroundDiscovery(
+      this.status,
+      this.discoveryScanInFlight
+    );
   }
 
   private refreshScanControls(): void {
@@ -969,16 +1041,16 @@ export class App {
       return;
     }
     const scanBtn = this.byId("scanBtn") as HTMLButtonElement;
-    const scanTitle = this.byId("scanStateTitle");
-    const scanSub = this.byId("scanStateSub");
+    const quickConnectBtn = this.byId("quickConnectBtn") as HTMLButtonElement;
+    const stageChip = this.byId("connStageChip");
     scanBtn.textContent = this.discoveryActive ? "×" : "+";
     scanBtn.title = this.discoveryActive ? "停止持续发现" : "持续发现设备";
     scanBtn.classList.toggle("danger", this.discoveryActive);
     scanBtn.disabled = this.discoveryScanInFlight && !this.discoveryActive;
-    scanTitle.textContent = this.discoveryActive ? REFERENCE_UI_COPY.scanSearching : REFERENCE_UI_COPY.scanIdle;
-    scanSub.textContent = this.discoveryActive
-      ? `第 ${this.discoveryRound || 1} 轮扫描中，列表会自动增量刷新`
-      : REFERENCE_UI_COPY.scanHint;
+    quickConnectBtn.disabled = !shouldStartBackgroundDiscovery(this.status, this.discoveryScanInFlight);
+    stageChip.textContent = this.discoveryScanInFlight
+      ? `连接阶段：${this.status.connectionState} · 后台搜索中`
+      : `连接阶段：${this.status.connectionState}`;
   }
 
   private renderUuidOptions(

@@ -286,3 +286,26 @@ Key files:
 - `项目文件/android-mvp-capacitor/src/styles.css`
 - `项目文件/android-mvp-capacitor/src/app.test.ts`
 - `.agent/handoffs/2026-04-28-UI-T-019.md`
+
+## M14 - T-020 home scan, swipe, and battery percent refinement
+
+Date: 2026-04-28
+
+Summary: Removed the home scan preparation card, changed manual refresh/search into a non-blocking background scan flow, refined connected-card swipe-to-disconnect motion, and replaced the lower Live Status refresh chip with battery percentage derived from battery voltage.
+
+Key conclusions:
+- This was an App/UI-layer pass only. BLE native code, protocol command HEX, Android native code, and `deviceController.ts` were not changed.
+- The home page now starts at the nearby-device section without the large scan preparation card.
+- Manual refresh/search no longer waits for the full scan window before returning UI control; progress updates the list and can still auto-connect the locked target.
+- Connected-card idle state is fully opaque; the red disconnect action appears only during/after a left swipe.
+- Battery percentage is a linear UI calculation from `batteryVoltage`: `2.5V=0%`, `3.4V=100%`, clamped to `0-100%`.
+
+Related logs:
+- `.agent/logs/2026-04-28-session-05.md`
+
+Key files:
+- `项目文件/android-mvp-capacitor/src/app.ts`
+- `项目文件/android-mvp-capacitor/src/styles.css`
+- `项目文件/android-mvp-capacitor/src/app.test.ts`
+- `.agent/plans/2026-04-28-t020-home-scan-swipe-battery.md`
+- `.agent/approvals/2026-04-28-t020-home-scan-swipe-battery.md`
