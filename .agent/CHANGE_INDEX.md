@@ -265,3 +265,24 @@ Key files:
 - `项目文件/android-mvp-capacitor/src/styles.css`
 - `项目文件/android-mvp-capacitor/src/app.test.ts`
 - `.agent/reports/screenshots/2026-04-28-t018-home.png`
+
+## M13 - T-019 UI card cleanup and status polling
+
+Date: 2026-04-28
+
+Summary: Removed the home current-device summary area, compacted nearby-device cards, added swipe-left disconnect, replaced unavailable Live Status fields with real read-status fields, moved mode buttons to the control panel top, and added 5s non-blocking read-status polling after ready.
+
+Key conclusions:
+- This was an App/UI-layer pass only. BLE native code, protocol command HEX, and `deviceController.ts` command semantics were not changed.
+- The home page now centers the nearby-device list as the only device surface.
+- The connected card can be swiped left to disconnect; normal tap still opens control when the card is not swiped open.
+- Automatic status polling sends `readStatus` every 5 seconds only while the connection is ready and no poll is already in flight.
+
+Related logs:
+- `.agent/logs/2026-04-28-session-04.md`
+
+Key files:
+- `项目文件/android-mvp-capacitor/src/app.ts`
+- `项目文件/android-mvp-capacitor/src/styles.css`
+- `项目文件/android-mvp-capacitor/src/app.test.ts`
+- `.agent/handoffs/2026-04-28-UI-T-019.md`

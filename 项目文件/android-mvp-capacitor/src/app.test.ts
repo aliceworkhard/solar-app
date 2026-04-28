@@ -6,6 +6,8 @@ import {
   DISCOVERY_INTERVAL_MS,
   REFERENCE_UI_CHROME,
   REFERENCE_UI_COPY,
+  STATUS_POLL_INTERVAL_MS,
+  SWIPE_DISCONNECT_THRESHOLD_PX,
   TARGET_DEVICE_NAME,
   createLiveStatusModel,
   createNearbyDeviceMetrics,
@@ -18,8 +20,10 @@ import {
   mergeDiscoveryDevices,
   resolveNativeBackAction,
   resolveBackNavigation,
+  resolveSwipeDisconnectState,
   shouldAutoConnectSupportedDevice,
   shouldOpenControlForConnectedDevice,
+  shouldPollReadStatus,
   shouldRefreshEnterControl
 } from "./app";
 import type { DeviceBrief, DeviceStatus } from "./types";
@@ -54,6 +58,8 @@ describe("App UI command model", () => {
     expect(REFERENCE_UI_CHROME.showMockStatusBar).toBe(false);
     expect(REFERENCE_UI_CHROME.showControlMoreMenu).toBe(false);
     expect(REFERENCE_UI_CHROME.showDefaultFeedbackCard).toBe(false);
+    expect(REFERENCE_UI_CHROME.showHomeSummaryCard).toBe(false);
+    expect(REFERENCE_UI_CHROME.modeSelectorPlacement).toBe("control-panel-top");
   });
 
   it("maps the two-page control surface to the five RF MVP commands once each", () => {
@@ -142,29 +148,31 @@ describe("App discovery model", () => {
     expect(resolveNativeBackAction("home")).toBe("exit");
   });
 
-  it("builds a Live Status model without fabricating unavailable protocol fields", () => {
+  it("builds a Live Status model from real read-status fields only", () => {
     const model = createLiveStatusModel({
       ...status("ready"),
       mode: "radar",
       power: 85,
       workMinutes: 27,
       batteryVoltage: 12.8,
-      loadCurrentAmp: 1.5
+      loadCurrentAmp: 1.5,
+      solarVoltage: 18.6
     });
 
     expect(model.caption).toBe("LIVE STATUS");
     expect(model.modeLabel).toBe("雷达");
     expect(model.batteryType).toBe("磷酸铁锂");
-    expect(model.batteryLevel).toBe("-");
     expect(model.workTime).toBe("27min");
-    expect(model.morningTime).toBe("-");
-    expect(model.lightsOffTime).toBe("-");
     expect(model.brightness).toBe("85%");
     expect(model.batteryVoltage).toBe("12.80V");
     expect(model.loadCurrent).toBe("1.50A");
+    expect(model.solarVoltage).toBe("18.6V");
+    expect("batteryLevel" in model).toBe(false);
+    expect("morningTime" in model).toBe(false);
+    expect("lightsOffTime" in model).toBe(false);
   });
 
-  it("shows 2x2 nearby-device metrics only for the active connected target", () => {
+  it("shows nearby-device inline metrics only for the active connected target", () => {
     const connectedStatus: DeviceStatus = {
       ...status("ready"),
       mode: "radar",
@@ -228,6 +236,21 @@ describe("App discovery model", () => {
 
   it("uses a five second interval for continuous discovery rounds", () => {
     expect(DISCOVERY_INTERVAL_MS).toBe(5000);
+  });
+
+  it("polls read-status every five seconds only while the active device is ready", () => {
+    expect(STATUS_POLL_INTERVAL_MS).toBe(5000);
+    expect(shouldPollReadStatus(status("ready"), false)).toBe(true);
+    expect(shouldPollReadStatus(status("ready"), true)).toBe(false);
+    expect(shouldPollReadStatus(status("connecting"), false)).toBe(false);
+    expect(shouldPollReadStatus(status("disconnected"), false)).toBe(false);
+  });
+
+  it("opens the disconnect action only after a deliberate left swipe on a connected card", () => {
+    expect(SWIPE_DISCONNECT_THRESHOLD_PX).toBeGreaterThanOrEqual(60);
+    expect(resolveSwipeDisconnectState(-SWIPE_DISCONNECT_THRESHOLD_PX, true)).toBe("open");
+    expect(resolveSwipeDisconnectState(-20, true)).toBe("closed");
+    expect(resolveSwipeDisconnectState(-SWIPE_DISCONNECT_THRESHOLD_PX, false)).toBe("closed");
   });
 });
 

@@ -153,3 +153,16 @@
 - 结论：T-001/T-002 可行性良好，连接、收发和 5 条 MVP 命令执行没有一次出错。
 - 记录文件：`.agent/reports/2026-04-27-feasibility-smoke-test.md`。
 - 正式补测模板：`.agent/reports/templates/`。
+
+## T-019 UI Card Cleanup And Status Polling Baseline
+
+- Date: 2026-04-28.
+- Scope: UI/App-layer refinement only; BLE native, protocol HEX, and `deviceController.ts` command semantics were not changed.
+- Home page: removed the full current-device summary card; nearby device card is now the primary device surface.
+- Nearby device cards: RSSI is shown on the right; mode, battery voltage, solar voltage, and brightness are shown as compact inline label/value metrics without boxed 2x2 cards.
+- Connected card action: left swipe opens a `取消连接` action; tapping a non-swiped connected card still opens the control page.
+- Control page: Live Status now displays battery voltage instead of battery remaining, mode instead of morning time, solar voltage instead of lights-off time, and no longer shows firmware.
+- Mode buttons: radar/time/average buttons moved to the top of the control panel.
+- Status polling: after ready, App sends non-blocking `readStatus` every 5 seconds; polling skips while a poll is already in flight or connection is not ready.
+- Verification: TDD red check failed first as expected; `npm.cmd test -- src/app.test.ts` passed 19 tests; `npm.cmd test` passed 5 files / 40 tests; `npm.cmd run build` passed; `npm.cmd run sync` passed; temporary Android Studio JBR `:app:assembleDebug` passed.
+- Pending real-phone check: confirm swipe-left disconnect behavior and confirm logs show one read-status TX every 5 seconds after ready.

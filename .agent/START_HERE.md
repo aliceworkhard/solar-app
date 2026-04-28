@@ -125,3 +125,11 @@ Recommended next step:
 - Verify right-edge/system back on the control page returns to the device homepage instead of exiting.
 - Verify read-status values update the Live Status card and the nearby-device 2x2 metrics.
 - If accepted, continue with T-001/T-002 formal sampling or T-010 continuous discovery tuning.
+
+## Current Best Next Step - After T-019
+
+T-019 is complete. The next real-phone check should focus on two behaviors:
+- Swipe the connected `AC632N_1` card left on the home page and verify `取消连接` disconnects the device.
+- Keep the device connected and ready, then verify the debug log shows one non-blocking `readStatus` TX every 5 seconds.
+
+If both pass, continue with formal T-001/T-002 sampling or longer BLE stability testing.
