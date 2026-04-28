@@ -15,6 +15,7 @@
 
 - 当前没有正在实施的已批准任务。
 
+
 - [ ] T-001 补齐 20 次真机性能采样
   - 优先级：P0
   - 状态：Feasibility Passed；用户反馈使用 vivo X300 Pro 测试未发现扫描/连接/传输问题，正式 20 次采样与 P50/P90 后补
@@ -71,6 +72,8 @@
 
 ## Recently Done
 
+- [x] T-022 UI 扫描停止、状态栏渐变、详情锚点与电流规则修正：`+ / X` 持续发现按钮改为独立状态 helper，点 `X` 会立即失效旧扫描回调并恢复 `+`；详情页取消隐藏式 tab，`设备状态` 与 `控制面板` 连续展示，顶部按钮改为锚点定位；电流显示规则改为亮度 `0` 用回传电流、亮度非 `0` 用 `power / 100 * 9.7272A`；Android 状态栏 theme/runtime/WebView 透明处理增强；`npm.cmd test -- src/app.test.ts`、`npm.cmd test`、`npm.cmd run build`、`npm.cmd run sync`、JBR `:app:assembleDebug` 通过。
+- [x] T-021 启动自动扫描、状态栏渐变延伸、详情页 tab 化与 BLE UI 卡顿修复：打开 App 后会自动后台扫描 `AC632N_1`；`+` 持续发现改为非阻塞启动；扫描/连接异步流程加入 operation token，过期回调不再覆盖当前 UI；断开后设备保留为可连接并降到列表下方；连接后首次读状态改为后台发送，快速进入详情不阻塞；详情页支持“设备状态 / 控制面板”tab 切换，控制面板内命令区在上、模式按钮在下；Android 状态栏改为透明 edge-to-edge；`npm.cmd test -- src/app.test.ts`、`npm.cmd test`、`npm.cmd run build`、`npm.cmd run sync`、JBR `:app:assembleDebug` 通过。
 - [x] T-020 首页搜索卡片移除、左滑动效、电量百分比和后台扫描优化：删除首页“准备搜索附近设备”卡片；刷新/查询改为后台扫描并通过进度回调增量更新列表或自动连接；已连接卡片静止时改为完全不透明，左滑取消连接增加拖动反馈、缓动和四角圆角；Live Status 下方第三个 chip 改为电量 `%`，按 `2.5V=0%`、`3.4V=100%` 线性换算并钳制；`npm.cmd test -- src/app.test.ts`、`npm.cmd test`、`npm.cmd run build`、`npm.cmd run sync`、JBR `:app:assembleDebug` 通过。
 - [x] T-019 UI 卡片收敛与 5s 读状态轮询：首页已移除“当前设备”整块；附近设备卡片 RSSI 移到右侧，4 项指标改为无框左右排版；已连接设备支持左滑显示“取消连接”；控制页 Live Status 改为电池电压、模式、太阳能电压等真实字段且不显示固件；模式按钮移到控制面板顶部；连接 ready 后每 5s 自动发送一次读状态；`npm.cmd test -- src/app.test.ts`、`npm.cmd test`、`npm.cmd run build`、`npm.cmd run sync`、JBR `:app:assembleDebug` 通过。
 - [x] T-018 Android back dispatch + Live Status layout + nearby-device 2x2 metrics: Android native back now calls WebView JS so control-page system/gesture back can return home before exit; control-page status area uses a Live Status card; nearby-device cards expose current mode, battery voltage, solar voltage, and brightness metrics; `npm.cmd test`, `npm.cmd run build`, `npm.cmd run sync`, temporary-JBR `:app:compileDebugJavaWithJavac`, and `:app:assembleDebug` passed. Needs real-phone gesture retest.

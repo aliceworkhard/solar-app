@@ -1,4 +1,4 @@
-# Change Index
+﻿# Change Index
 
 本文件只做历史入口，不写完整过程。需要细节时再定向读取对应日志、归档或项目文档。
 
@@ -309,3 +309,50 @@ Key files:
 - `项目文件/android-mvp-capacitor/src/app.test.ts`
 - `.agent/plans/2026-04-28-t020-home-scan-swipe-battery.md`
 - `.agent/approvals/2026-04-28-t020-home-scan-swipe-battery.md`
+
+## M15 - T-021 auto scan, nonblocking BLE UI, and edge status bar
+
+Date: 2026-04-28
+
+Summary: Added startup auto-scan, nonblocking discovery/connect UI guards, disconnected-device retention/demotion, real detail-page tabs, control-panel ordering, and Android transparent status bar / edge-to-edge presentation.
+
+Key conclusions:
+- This keeps the BLE native plugin, protocol command HEX, and `deviceController.ts` command semantics unchanged.
+- App-layer operation tokens prevent stale scan/connect callbacks from updating the current UI after disconnect or newer operations.
+- A manually disconnected device remains visible and connectable but is demoted below other connectable scan results.
+- Initial read-status after connection is now fire-and-forget, so the detail page can open while status data continues to arrive asynchronously.
+
+Related logs:
+- `.agent/logs/2026-04-28-session-06.md`
+
+Key files:
+- `项目文件/android-mvp-capacitor/src/app.ts`
+- `项目文件/android-mvp-capacitor/src/styles.css`
+- `项目文件/android-mvp-capacitor/src/app.test.ts`
+- `项目文件/android-mvp-capacitor/android/app/src/main/java/com/solar/remote/MainActivity.java`
+- `.agent/plans/2026-04-28-t021-autoscan-statusbar-control-tabs.md`
+- `.agent/approvals/2026-04-28-t021-autoscan-statusbar-control-tabs.md`
+
+## M16 - T-022 scan stop, anchor detail page, and current rule
+
+Date: 2026-04-28
+
+Summary: Fixed the continuous discovery stop control, changed detail tabs into scroll anchors over a continuous detail page, adjusted current display by brightness, and hardened Android system-bar transparency.
+
+Key conclusions:
+- The `+ / X` discovery control is now derived from a dedicated state helper; stopping invalidates stale App-layer scan callbacks and immediately restores the plus state.
+- The detail page no longer hides either section. `设备状态` and `控制面板` render as a vertical stack, and the top buttons scroll to anchors.
+- Current display now follows the latest rule: brightness `0` uses returned `loadCurrentAmp`; brightness above `0` uses `power / 100 * 9.7272A`.
+- Android theme/runtime handling was strengthened by applying the no-actionbar theme, transparent decor/WebView/system bars, and transparent status/navigation bar XML settings.
+
+Related logs:
+- `.agent/logs/2026-04-28-session-07.md`
+
+Key files:
+- `项目文件/android-mvp-capacitor/src/app.ts`
+- `项目文件/android-mvp-capacitor/src/styles.css`
+- `项目文件/android-mvp-capacitor/src/app.test.ts`
+- `项目文件/android-mvp-capacitor/android/app/src/main/java/com/solar/remote/MainActivity.java`
+- `项目文件/android-mvp-capacitor/android/app/src/main/res/values/styles.xml`
+- `.agent/plans/2026-04-28-t022-ui-scan-stop-statusbar-current.md`
+- `.agent/approvals/2026-04-28-t022-ui-scan-stop-statusbar-current.md`

@@ -47,6 +47,14 @@ export interface NearbyDeviceMetrics {
   power: string;
 }
 
+export interface DiscoveryControlState {
+  label: string;
+  title: string;
+  isDanger: boolean;
+  disabled: boolean;
+  stageText: string;
+}
+
 export const BUSINESS_COMMANDS: BusinessCommand[] = [
   {
     id: "readStatusBtn",
@@ -82,6 +90,12 @@ export const BUSINESS_COMMANDS: BusinessCommand[] = [
 
 export const DEVICE_ASSET_SRC = "/assets/ui/mppt_gray_black_controller_transparent.png";
 export const TARGET_DEVICE_NAME = "AC632N_1";
+export const DETAIL_SECTION_ANCHORS = {
+  status: "deviceStatusSection",
+  controls: "controlPanelSection"
+} as const;
+type DetailSectionName = keyof typeof DETAIL_SECTION_ANCHORS;
+export const LOAD_CURRENT_BRIGHTNESS_FACTOR_AMP = 9.7272;
 export const REFERENCE_UI_COPY = {
   homeTitle: "设备",
   homeSubtitle: "连接并管理您的 MPPT 设备",
@@ -98,7 +112,8 @@ export const REFERENCE_UI_CHROME = {
   showDefaultFeedbackCard: false,
   showHomeSummaryCard: false,
   showHomeScanCard: false,
-  modeSelectorPlacement: "control-panel-top"
+  modeSelectorPlacement: "control-panel-bottom",
+  detailNavigationMode: "anchor-scroll"
 } as const;
 
 export function shouldRefreshEnterControl(_status: DeviceStatus): boolean {
@@ -129,6 +144,28 @@ export function shouldStartBackgroundDiscovery(status: DeviceStatus, scanInFligh
   return !scanInFlight && !["connecting", "discovering", "subscribing"].includes(status.connectionState);
 }
 
+export function resolveDiscoveryControlState(
+  discoveryActive: boolean,
+  scanInFlight: boolean,
+  connectionState: DeviceStatus["connectionState"]
+): DiscoveryControlState {
+  return {
+    label: discoveryActive ? "×" : "+",
+    title: discoveryActive ? "停止持续发现" : "持续发现设备",
+    isDanger: discoveryActive,
+    disabled: scanInFlight && !discoveryActive,
+    stageText: scanInFlight ? `连接阶段：${connectionState} · 后台搜索中` : `连接阶段：${connectionState}`
+  };
+}
+
+export function shouldScheduleInitialDiscovery(
+  status: DeviceStatus,
+  scanInFlight: boolean,
+  alreadyScheduled: boolean
+): boolean {
+  return !alreadyScheduled && shouldStartBackgroundDiscovery(status, scanInFlight);
+}
+
 export function resolveSwipeDisconnectState(deltaX: number, isConnected: boolean): SwipeDisconnectState {
   return isConnected && deltaX <= -SWIPE_DISCONNECT_THRESHOLD_PX ? "open" : "closed";
 }
@@ -142,11 +179,11 @@ export function shouldOpenControlForConnectedDevice(
   activeDeviceId: string,
   status: DeviceStatus
 ): boolean {
+  const activeDeviceMatches =
+    Boolean(activeDeviceId) && deviceId.toLowerCase() === activeDeviceId.toLowerCase();
   return (
-    isControlReady(status) &&
-    status.connected &&
-    Boolean(activeDeviceId) &&
-    deviceId.toLowerCase() === activeDeviceId.toLowerCase()
+    activeDeviceMatches &&
+    ["connecting", "discovering", "subscribing", "connected", "ready"].includes(status.connectionState)
   );
 }
 
@@ -248,6 +285,9 @@ export function formatBatteryPercent(status: DeviceStatus): string {
 }
 
 export function formatLoadCurrent(status: DeviceStatus): string {
+  if (typeof status.power === "number" && Number.isFinite(status.power) && status.power > 0) {
+    return `${((status.power / 100) * LOAD_CURRENT_BRIGHTNESS_FACTOR_AMP).toFixed(2)}A`;
+  }
   return formatFixedUnit(status.loadCurrentAmp, 2, "A");
 }
 
@@ -265,6 +305,7 @@ export interface DiscoveredDeviceRecord extends DeviceBrief {
   scanRound: number;
   isConnected: boolean;
   isStale: boolean;
+  isRecentlyDisconnected: boolean;
   usedFallback: boolean;
 }
 
@@ -273,6 +314,7 @@ export interface DiscoveryMergeContext {
   now: number;
   scanRound: number;
   usedFallback: boolean;
+  recentlyDisconnectedDeviceId?: string;
 }
 
 export function mergeDiscoveryDevices(
@@ -282,9 +324,12 @@ export function mergeDiscoveryDevices(
 ): DiscoveredDeviceRecord[] {
   const byId = new Map<string, DiscoveredDeviceRecord>();
   const activeDeviceId = context.activeDeviceId.toLowerCase();
+  const recentlyDisconnectedDeviceId = context.recentlyDisconnectedDeviceId?.toLowerCase() ?? "";
 
   for (const current of currentDevices) {
     const isConnected = current.deviceId.toLowerCase() === activeDeviceId;
+    const isRecentlyDisconnected =
+      !isConnected && Boolean(recentlyDisconnectedDeviceId) && current.deviceId.toLowerCase() === recentlyDisconnectedDeviceId;
     const ageMs = context.now - current.lastSeenAt;
     if (!isConnected && ageMs > DEVICE_FORGET_AFTER_MS) {
       continue;
@@ -292,13 +337,16 @@ export function mergeDiscoveryDevices(
     byId.set(current.deviceId, {
       ...current,
       isConnected,
-      isStale: !isConnected && ageMs > DEVICE_STALE_AFTER_MS
+      isStale: !isConnected && ageMs > DEVICE_STALE_AFTER_MS,
+      isRecentlyDisconnected
     });
   }
 
   for (const incoming of incomingDevices) {
     const previous = byId.get(incoming.deviceId);
     const isConnected = incoming.deviceId.toLowerCase() === activeDeviceId;
+    const isRecentlyDisconnected =
+      !isConnected && Boolean(recentlyDisconnectedDeviceId) && incoming.deviceId.toLowerCase() === recentlyDisconnectedDeviceId;
     byId.set(incoming.deviceId, {
       deviceId: incoming.deviceId,
       name: incoming.name || previous?.name || "Unknown",
@@ -308,6 +356,7 @@ export function mergeDiscoveryDevices(
       scanRound: context.scanRound,
       isConnected,
       isStale: false,
+      isRecentlyDisconnected,
       usedFallback: context.usedFallback
     });
   }
@@ -315,6 +364,9 @@ export function mergeDiscoveryDevices(
   return Array.from(byId.values()).sort((left, right) => {
     if (left.isConnected !== right.isConnected) {
       return left.isConnected ? -1 : 1;
+    }
+    if (left.isRecentlyDisconnected !== right.isRecentlyDisconnected) {
+      return left.isRecentlyDisconnected ? 1 : -1;
     }
     if (left.isStale !== right.isStale) {
       return left.isStale ? 1 : -1;
@@ -339,12 +391,18 @@ export class App {
   private discoveryActive = false;
   private discoveryScanInFlight = false;
   private autoConnectInFlight = false;
+  private initialDiscoveryScheduled = false;
   private historyInstalled = false;
   private discoveryTimer: ReturnType<typeof setTimeout> | null = null;
   private statusPollTimer: ReturnType<typeof setTimeout> | null = null;
   private statusPollInFlight = false;
   private swipedDeviceId = "";
   private discoveryRound = 0;
+  private scanOperationSeq = 0;
+  private activeScanOperationId = 0;
+  private connectOperationSeq = 0;
+  private activeConnectOperationId = 0;
+  private recentlyDisconnectedDeviceId = "";
 
   constructor(root: HTMLElement, controller: DeviceController) {
     this.root = root;
@@ -366,6 +424,7 @@ export class App {
       this.logs = logs;
       this.refreshLogs();
     });
+    this.scheduleInitialDiscovery();
   }
 
   private render(): void {
@@ -400,11 +459,15 @@ export class App {
 
           <section class="panel control-panel ${this.view === "control" ? "active" : ""}" id="controlPanel">
             <div class="detail-tabs" aria-label="页面分组">
-              <span class="active">${REFERENCE_UI_COPY.controlTabs[0]}</span>
-              <span>${REFERENCE_UI_COPY.controlTabs[1]}</span>
+              <button class="detail-tab-button" data-detail-target="status" type="button">
+                ${REFERENCE_UI_COPY.controlTabs[0]}
+              </button>
+              <button class="detail-tab-button" data-detail-target="controls" type="button">
+                ${REFERENCE_UI_COPY.controlTabs[1]}
+              </button>
             </div>
             <div class="control-stack">
-              <article class="detail-device-card live-status-card">
+              <article class="detail-device-card live-status-card" id="${DETAIL_SECTION_ANCHORS.status}" tabindex="-1">
                 <div class="live-status-top">
                   <div class="live-status-main">
                     <div class="live-status-caption-row">
@@ -450,12 +513,7 @@ export class App {
                 </div>
               </article>
 
-              <article class="mvp-command-card">
-                <div class="seg readonly control-mode-strip" id="modeSeg" aria-label="模式展示">
-                  <button data-mode="radar" class="seg-btn" type="button">雷达模式</button>
-                  <button data-mode="time" class="seg-btn" type="button">时控模式</button>
-                  <button data-mode="average" class="seg-btn" type="button">平均模式</button>
-                </div>
+              <article class="mvp-command-card" id="${DETAIL_SECTION_ANCHORS.controls}" tabindex="-1">
                 <div class="section-row">
                   <h2>${REFERENCE_UI_COPY.commandPanelTitle}</h2>
                   <span class="write-chip">写入方式：<b id="writeTypeValue">-</b></span>
@@ -471,6 +529,11 @@ export class App {
                   ).join("")}
                 </div>
                 <div class="result result-live" id="resultArea" hidden></div>
+                <div class="seg readonly control-mode-strip" id="modeSeg" aria-label="模式展示">
+                  <button data-mode="radar" class="seg-btn" type="button">雷达模式</button>
+                  <button data-mode="time" class="seg-btn" type="button">时控模式</button>
+                  <button data-mode="average" class="seg-btn" type="button">平均模式</button>
+                </div>
               </article>
             </div>
           </section>
@@ -516,6 +579,12 @@ export class App {
     this.byId("backBtn").addEventListener("click", () => {
       this.navigateHome();
     });
+    this.root.querySelectorAll<HTMLButtonElement>(".detail-tab-button").forEach((button) => {
+      button.addEventListener("click", () => {
+        const target = button.dataset.detailTarget === "controls" ? "controls" : "status";
+        this.scrollToDetailSection(target);
+      });
+    });
     for (const command of BUSINESS_COMMANDS) {
       this.byId(command.id).addEventListener("click", () => {
         void this.handleAction(command, () => this.controller[command.action]());
@@ -539,7 +608,19 @@ export class App {
     });
   }
 
-  private async toggleContinuousDiscovery(): Promise<void> {
+  private scheduleInitialDiscovery(): void {
+    if (!shouldScheduleInitialDiscovery(this.status, this.discoveryScanInFlight, this.initialDiscoveryScheduled)) {
+      return;
+    }
+    this.initialDiscoveryScheduled = true;
+    setTimeout(() => {
+      if (shouldStartBackgroundDiscovery(this.status, this.discoveryScanInFlight)) {
+        this.refreshDeviceDiscovery();
+      }
+    }, 0);
+  }
+
+  private toggleContinuousDiscovery(): void {
     if (this.discoveryActive) {
       this.stopContinuousDiscovery("已停止持续发现");
       return;
@@ -547,19 +628,51 @@ export class App {
     this.discoveryActive = true;
     this.discoveryRound = 0;
     this.refreshScanControls();
-    await this.runDiscoveryRound();
+    void this.runDiscoveryRound();
   }
 
   private stopContinuousDiscovery(message?: string): void {
     this.discoveryActive = false;
+    this.invalidateScanOperation();
     if (this.discoveryTimer) {
       clearTimeout(this.discoveryTimer);
       this.discoveryTimer = null;
     }
     this.refreshScanControls();
     if (message) {
-      this.setResult(message, "idle");
+      this.setResult(message, "success");
     }
+  }
+
+  private startScanOperation(): number {
+    const operationId = ++this.scanOperationSeq;
+    this.activeScanOperationId = operationId;
+    this.discoveryScanInFlight = true;
+    return operationId;
+  }
+
+  private invalidateScanOperation(): void {
+    this.activeScanOperationId = ++this.scanOperationSeq;
+    this.discoveryScanInFlight = false;
+  }
+
+  private isActiveScanOperation(operationId: number): boolean {
+    return this.activeScanOperationId === operationId;
+  }
+
+  private startConnectOperation(): number {
+    const operationId = ++this.connectOperationSeq;
+    this.activeConnectOperationId = operationId;
+    return operationId;
+  }
+
+  private invalidateConnectOperation(): void {
+    this.activeConnectOperationId = ++this.connectOperationSeq;
+    this.autoConnectInFlight = false;
+  }
+
+  private isActiveConnectOperation(operationId: number): boolean {
+    return this.activeConnectOperationId === operationId;
   }
 
   private async runDiscoveryRound(): Promise<void> {
@@ -572,7 +685,7 @@ export class App {
       return;
     }
 
-    this.discoveryScanInFlight = true;
+    const operationId = this.startScanOperation();
     this.discoveryRound += 1;
     const round = this.discoveryRound;
     let roundUsedFallback = false;
@@ -586,6 +699,9 @@ export class App {
         fullWindowMs: 4200,
         allowFallbackNoPrefix: true,
         onProgress: (devices, meta) => {
+          if (!this.isActiveScanOperation(operationId)) {
+            return;
+          }
           roundUsedFallback = meta.usedFallbackNoPrefix;
           this.mergeSupportedDevices(devices, {
             activeDeviceId: this.activeDeviceId,
@@ -602,6 +718,9 @@ export class App {
           }
         }
       });
+      if (!this.isActiveScanOperation(operationId)) {
+        return;
+      }
       this.mergeSupportedDevices(result, {
         activeDeviceId: this.activeDeviceId,
         now: Date.now(),
@@ -614,11 +733,15 @@ export class App {
         this.setResult(`第 ${round} 轮完成：当前列表 ${this.devices.length} 台`, "success");
       }
     } catch (error) {
-      this.setResult(`持续发现失败：${this.errorMessage(error)}`, "error");
+      if (this.isActiveScanOperation(operationId)) {
+        this.setResult(`持续发现失败：${this.errorMessage(error)}`, "error");
+      }
     } finally {
-      this.discoveryScanInFlight = false;
-      this.refreshScanControls();
-      this.scheduleNextDiscoveryRound();
+      if (this.isActiveScanOperation(operationId)) {
+        this.discoveryScanInFlight = false;
+        this.refreshScanControls();
+        this.scheduleNextDiscoveryRound();
+      }
     }
   }
 
@@ -649,7 +772,7 @@ export class App {
       return;
     }
 
-    this.discoveryScanInFlight = true;
+    const operationId = this.startScanOperation();
     this.discoveryRound += 1;
     const round = this.discoveryRound;
     this.refreshScanControls();
@@ -665,6 +788,9 @@ export class App {
         fullWindowMs: 2800,
         allowFallbackNoPrefix: true,
         onProgress: (devices, meta) => {
+          if (!this.isActiveScanOperation(operationId)) {
+            return;
+          }
           this.mergeSupportedDevices(devices, {
             activeDeviceId: this.activeDeviceId,
             now: Date.now(),
@@ -676,6 +802,9 @@ export class App {
         }
       })
       .then(async (devices) => {
+        if (!this.isActiveScanOperation(operationId)) {
+          return;
+        }
         this.mergeSupportedDevices(devices, {
           activeDeviceId: this.activeDeviceId,
           now: Date.now(),
@@ -695,11 +824,15 @@ export class App {
         }
       })
       .catch((error) => {
-        this.setResult(`刷新失败：${this.errorMessage(error)}`, "error");
+        if (this.isActiveScanOperation(operationId)) {
+          this.setResult(`刷新失败：${this.errorMessage(error)}`, "error");
+        }
       })
       .finally(() => {
-        this.discoveryScanInFlight = false;
-        this.refreshScanControls();
+        if (this.isActiveScanOperation(operationId)) {
+          this.discoveryScanInFlight = false;
+          this.refreshScanControls();
+        }
       });
   }
 
@@ -708,15 +841,22 @@ export class App {
   }
 
   private mergeSupportedDevices(incomingDevices: DeviceBrief[], context: DiscoveryMergeContext): void {
+    const mergeContext = {
+      ...context,
+      recentlyDisconnectedDeviceId: context.recentlyDisconnectedDeviceId ?? this.recentlyDisconnectedDeviceId
+    };
     this.devices = mergeDiscoveryDevices(
       filterSupportedDevices(this.devices),
       filterSupportedDevices(incomingDevices),
-      context
+      mergeContext
     );
   }
 
   private firstSupportedDevice(devices: DeviceBrief[]): DeviceBrief | undefined {
-    return filterSupportedDevices(devices)[0];
+    const recentlyDisconnectedDeviceId = this.recentlyDisconnectedDeviceId.toLowerCase();
+    return filterSupportedDevices(devices).find(
+      (device) => !recentlyDisconnectedDeviceId || device.deviceId.toLowerCase() !== recentlyDisconnectedDeviceId
+    );
   }
 
   private async autoConnectSupportedDevice(devices: DeviceBrief[], message: string): Promise<boolean> {
@@ -739,8 +879,10 @@ export class App {
   }
 
   private async connectDevice(device: DeviceBrief): Promise<void> {
+    const operationId = this.startConnectOperation();
     try {
       this.activeDeviceId = device.deviceId;
+      this.recentlyDisconnectedDeviceId = "";
       this.devices = mergeDiscoveryDevices(this.devices, [], {
         activeDeviceId: this.activeDeviceId,
         now: Date.now(),
@@ -750,22 +892,32 @@ export class App {
       this.refreshDeviceList();
       this.setResult(`连接 ${device.name}...`, "pending");
       await this.controller.connectAndPrepare(device.deviceId);
+      if (!this.isActiveConnectOperation(operationId)) {
+        return;
+      }
       this.refreshStatus();
       this.refreshDeviceList();
       this.refreshUuidSelectors();
-      await this.requestInitialStatusRefresh();
+      this.requestInitialStatusRefresh(operationId);
       this.syncStatusPolling();
     } catch (error) {
-      this.activeDeviceId = "";
-      this.stopStatusPolling();
-      this.setResult(`连接失败：${this.errorMessage(error)}`, "error");
-      this.refreshDeviceList();
+      if (this.isActiveConnectOperation(operationId)) {
+        this.activeDeviceId = "";
+        this.stopStatusPolling();
+        this.setResult(`连接失败：${this.errorMessage(error)}`, "error");
+        this.refreshDeviceList();
+      }
     }
   }
 
   private async disconnectDevice(): Promise<void> {
+    const disconnectedDeviceId = this.activeDeviceId;
     try {
+      this.stopContinuousDiscovery();
+      this.invalidateScanOperation();
+      this.invalidateConnectOperation();
       await this.controller.disconnect();
+      this.recentlyDisconnectedDeviceId = disconnectedDeviceId;
       this.activeDeviceId = "";
       this.stopStatusPolling();
       this.setResult("已断开连接", "success");
@@ -809,6 +961,15 @@ export class App {
     } catch (error) {
       this.setResult(`RAW发送失败：${this.errorMessage(error)}`, "error");
     }
+  }
+
+  private scrollToDetailSection(target: DetailSectionName): void {
+    const section = this.root.querySelector<HTMLElement>(`#${DETAIL_SECTION_ANCHORS[target]}`);
+    if (!section) {
+      return;
+    }
+    section.scrollIntoView({ behavior: "smooth", block: "start" });
+    section.focus({ preventScroll: true });
   }
 
   private refreshDeviceList(): void {
@@ -1043,14 +1204,17 @@ export class App {
     const scanBtn = this.byId("scanBtn") as HTMLButtonElement;
     const quickConnectBtn = this.byId("quickConnectBtn") as HTMLButtonElement;
     const stageChip = this.byId("connStageChip");
-    scanBtn.textContent = this.discoveryActive ? "×" : "+";
-    scanBtn.title = this.discoveryActive ? "停止持续发现" : "持续发现设备";
-    scanBtn.classList.toggle("danger", this.discoveryActive);
-    scanBtn.disabled = this.discoveryScanInFlight && !this.discoveryActive;
+    const controlState = resolveDiscoveryControlState(
+      this.discoveryActive,
+      this.discoveryScanInFlight,
+      this.status.connectionState
+    );
+    scanBtn.textContent = controlState.label;
+    scanBtn.title = controlState.title;
+    scanBtn.classList.toggle("danger", controlState.isDanger);
+    scanBtn.disabled = controlState.disabled;
     quickConnectBtn.disabled = !shouldStartBackgroundDiscovery(this.status, this.discoveryScanInFlight);
-    stageChip.textContent = this.discoveryScanInFlight
-      ? `连接阶段：${this.status.connectionState} · 后台搜索中`
-      : `连接阶段：${this.status.connectionState}`;
+    stageChip.textContent = controlState.stageText;
   }
 
   private renderUuidOptions(
@@ -1151,13 +1315,19 @@ export class App {
     return "handled";
   }
 
-  private async requestInitialStatusRefresh(): Promise<void> {
-    try {
-      const message = await this.controller.readStatus();
-      this.setResult(`连接成功，已发送读状态：${message}`, "success");
-    } catch (error) {
-      this.setResult(`连接成功，但读状态发送失败：${this.errorMessage(error)}`, "error");
-    }
+  private requestInitialStatusRefresh(operationId: number): void {
+    void this.controller
+      .readStatus()
+      .then((message) => {
+        if (this.isActiveConnectOperation(operationId)) {
+          this.setResult(`连接成功，已发送读状态：${message}`, "success");
+        }
+      })
+      .catch((error) => {
+        if (this.isActiveConnectOperation(operationId)) {
+          this.setResult(`连接成功，但读状态发送失败：${this.errorMessage(error)}`, "error");
+        }
+      });
   }
 
   private syncStatusPolling(): void {

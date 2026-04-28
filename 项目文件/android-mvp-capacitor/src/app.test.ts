@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   BUSINESS_COMMANDS,
+  DETAIL_SECTION_ANCHORS,
   DEVICE_ASSET_SRC,
   DEVICE_STALE_AFTER_MS,
   DISCOVERY_INTERVAL_MS,
+  LOAD_CURRENT_BRIGHTNESS_FACTOR_AMP,
   REFERENCE_UI_CHROME,
   REFERENCE_UI_COPY,
   STATUS_POLL_INTERVAL_MS,
@@ -22,8 +24,10 @@ import {
   mergeDiscoveryDevices,
   resolveNativeBackAction,
   resolveBackNavigation,
+  resolveDiscoveryControlState,
   resolveSwipeDisconnectState,
   shouldAutoConnectSupportedDevice,
+  shouldScheduleInitialDiscovery,
   shouldStartBackgroundDiscovery,
   shouldOpenControlForConnectedDevice,
   shouldPollReadStatus,
@@ -63,7 +67,12 @@ describe("App UI command model", () => {
     expect(REFERENCE_UI_CHROME.showDefaultFeedbackCard).toBe(false);
     expect(REFERENCE_UI_CHROME.showHomeSummaryCard).toBe(false);
     expect(REFERENCE_UI_CHROME.showHomeScanCard).toBe(false);
-    expect(REFERENCE_UI_CHROME.modeSelectorPlacement).toBe("control-panel-top");
+    expect(REFERENCE_UI_CHROME.modeSelectorPlacement).toBe("control-panel-bottom");
+    expect(REFERENCE_UI_CHROME.detailNavigationMode).toBe("anchor-scroll");
+    expect(DETAIL_SECTION_ANCHORS).toEqual({
+      status: "deviceStatusSection",
+      controls: "controlPanelSection"
+    });
   });
 
   it("maps the two-page control surface to the five RF MVP commands once each", () => {
@@ -108,6 +117,13 @@ describe("App status formatting", () => {
     expect(formatSolarVoltage(readableStatus)).toBe("18.4V");
   });
 
+  it("uses returned load current while brightness is zero and derives current from brightness when lit", () => {
+    expect(LOAD_CURRENT_BRIGHTNESS_FACTOR_AMP).toBe(9.7272);
+    expect(formatLoadCurrent({ ...status("ready"), power: 0, loadCurrentAmp: 1.23 })).toBe("1.23A");
+    expect(formatLoadCurrent({ ...status("ready"), power: 30, loadCurrentAmp: 1.23 })).toBe("2.92A");
+    expect(formatLoadCurrent({ ...status("ready"), power: 100 })).toBe("9.73A");
+  });
+
   it("converts battery voltage to a clamped percentage for the Live Status chip", () => {
     expect(formatBatteryPercent({ ...status("ready"), batteryVoltage: 3.4 })).toBe("100%");
     expect(formatBatteryPercent({ ...status("ready"), batteryVoltage: 2.5 })).toBe("0%");
@@ -135,8 +151,19 @@ describe("App discovery model", () => {
 
   it("opens the detail view instead of reconnecting when the active ready device card is tapped", () => {
     expect(shouldOpenControlForConnectedDevice("D1", "D1", status("ready"))).toBe(true);
+    expect(shouldOpenControlForConnectedDevice("D1", "D1", status("connecting"))).toBe(true);
+    expect(shouldOpenControlForConnectedDevice("D1", "D1", status("discovering"))).toBe(true);
+    expect(shouldOpenControlForConnectedDevice("D1", "D1", status("subscribing"))).toBe(true);
     expect(shouldOpenControlForConnectedDevice("D1", "D2", status("ready"))).toBe(false);
-    expect(shouldOpenControlForConnectedDevice("D1", "D1", status("connecting"))).toBe(false);
+    expect(shouldOpenControlForConnectedDevice("D1", "D1", status("disconnected"))).toBe(false);
+  });
+
+  it("schedules startup discovery only when no BLE operation is active", () => {
+    expect(shouldScheduleInitialDiscovery(status("idle"), false, false)).toBe(true);
+    expect(shouldScheduleInitialDiscovery(status("ready"), false, false)).toBe(true);
+    expect(shouldScheduleInitialDiscovery(status("idle"), true, false)).toBe(false);
+    expect(shouldScheduleInitialDiscovery(status("connecting"), false, false)).toBe(false);
+    expect(shouldScheduleInitialDiscovery(status("idle"), false, true)).toBe(false);
   });
 
   it("auto-connects only when the locked target is present and no connection is active", () => {
@@ -158,6 +185,21 @@ describe("App discovery model", () => {
     expect(shouldStartBackgroundDiscovery(status("connecting"), false)).toBe(false);
     expect(shouldStartBackgroundDiscovery(status("discovering"), false)).toBe(false);
     expect(shouldStartBackgroundDiscovery(status("subscribing"), false)).toBe(false);
+  });
+
+  it("keeps the discovery stop control clickable and restores the plus state after stop", () => {
+    expect(resolveDiscoveryControlState(true, true, "scanning")).toMatchObject({
+      label: "×",
+      title: "停止持续发现",
+      isDanger: true,
+      disabled: false
+    });
+    expect(resolveDiscoveryControlState(false, false, "idle")).toMatchObject({
+      label: "+",
+      title: "持续发现设备",
+      isDanger: false,
+      disabled: false
+    });
   });
 
   it("maps system back from control to home before allowing app exit", () => {
@@ -188,7 +230,7 @@ describe("App discovery model", () => {
     expect(model.brightness).toBe("85%");
     expect(model.batteryVoltage).toBe("12.80V");
     expect(model.batteryPercent).toBe("100%");
-    expect(model.loadCurrent).toBe("1.50A");
+    expect(model.loadCurrent).toBe("8.27A");
     expect(model.solarVoltage).toBe("18.6V");
     expect("batteryLevel" in model).toBe(false);
     expect("morningTime" in model).toBe(false);
@@ -236,6 +278,31 @@ describe("App discovery model", () => {
     expect(secondRound.map((item) => item.deviceId).sort()).toEqual(["A1", "B2"]);
     expect(secondRound.find((item) => item.deviceId === "A1")?.isConnected).toBe(true);
     expect(secondRound.find((item) => item.deviceId === "B2")?.name).toBe("AC632N");
+  });
+
+  it("keeps a disconnected device visible but demotes it below connectable scan results", () => {
+    const firstRound = mergeDiscoveryDevices(
+      [],
+      [device("A1", TARGET_DEVICE_NAME, -34), device("B2", TARGET_DEVICE_NAME, -64)],
+      {
+        activeDeviceId: "A1",
+        now: 1000,
+        scanRound: 1,
+        usedFallback: false
+      }
+    );
+
+    const afterDisconnect = mergeDiscoveryDevices(firstRound, [device("A1", TARGET_DEVICE_NAME, -32)], {
+      activeDeviceId: "",
+      now: 2000,
+      scanRound: 2,
+      usedFallback: false,
+      recentlyDisconnectedDeviceId: "A1"
+    });
+
+    expect(afterDisconnect.map((item) => item.deviceId)).toEqual(["B2", "A1"]);
+    expect(afterDisconnect.find((item) => item.deviceId === "A1")?.isConnected).toBe(false);
+    expect(afterDisconnect.find((item) => item.deviceId === "A1")?.isRecentlyDisconnected).toBe(true);
   });
 
   it("marks missing devices stale before removing them from the list", () => {

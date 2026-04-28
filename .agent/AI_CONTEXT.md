@@ -1,4 +1,4 @@
-# AI Context
+﻿# AI Context
 
 更新时间：2026-04-28
 
@@ -38,7 +38,7 @@
 
 ## Current Verification State
 
-- `npm.cmd test`：最近一次通过，5 个测试文件、38 个测试通过。
+- `npm.cmd test`：最近一次通过，5 个测试文件、46 个测试通过。
 - T-003 响应等待策略：5 条 MVP 命令默认不等待回包；显式 `waitForResponse=true` 路径已补单测，写入失败会清理 pending 后重试。
 - T-004 两页业务 UI：主页扫描/快连/连接反馈可见，控制页 5 个 RF 命令一一映射到 `DeviceController`，调试台隐藏保留。
 - T-002 前置接入：App 面向方法已锁定 5 条最小命令集 HEX，并有 `CommandBuilder` 与 `DeviceController` 写入链路测试覆盖。
@@ -46,7 +46,7 @@
 - T-012 读状态可读化：`E1` 回传会解析工作时长、亮度、电池电压、电池电流、太阳能电压；电池 UI 单位为 `V`，电流为 `A`，太阳能电压为 `V`，短包不会更新业务状态。
 - T-001/T-002 可行性冒烟测试：用户使用 vivo X300 Pro 测试，设备连接、发送、接收和 5 条 MVP 命令执行均未发现传输错误；该结论不是完整 20 次/P50/P90 或逐条 10 次验收。
 - `npm.cmd run build`：最近一次通过。
-- Gradle 终端构建：当前环境缺 `JAVA_HOME`，需在本机 Android Studio 或配置 JDK 后复验。
+- Gradle 终端构建：可用 Android Studio JBR 临时设置 `JAVA_HOME` 后执行 `:app:assembleDebug`；最近一次通过。
 - Android 真机：BLE 已能发送和接收；正式量化采样和命令逐次复测记录仍需后补。
 
 ## Working Rules
@@ -134,7 +134,7 @@
 - T-009 持续发现仍需真机验证补扫间隔、过期时间和进入控制页后的低频保活策略。
 - 哪些特定指令稳定有回传仍待真机复测确认；程序默认不等待，仅允许显式标记命令等待。
 - 开/关命令在协议中是单一 `0x0A` 控制命令，是否能区分开机/关机仍待真机确认。
-- Debug APK 的常规 Gradle 命令验证需要补 `JAVA_HOME`。
+- Debug APK 可通过临时设置 Android Studio JBR `JAVA_HOME` 验证；如需全局常规命令仍可后续配置环境变量。
 - 多 agent 框架已建立，但还未经过一次真实多人协作演练。
 
 ## Skill Baseline
@@ -178,3 +178,27 @@
 - Live Status: lower third chip now shows battery percentage instead of refresh time; percentage is calculated from `batteryVoltage` by `2.5V=0%`, `3.4V=100%`, clamped to `0-100%`.
 - Verification: TDD red check failed first as expected; `npm.cmd test -- src/app.test.ts` passed 21 tests; `npm.cmd test` passed 5 files / 42 tests; `npm.cmd run build` passed; `npm.cmd run sync` passed; temporary Android Studio JBR `:app:assembleDebug` passed.
 - Pending real-phone check: verify no scan preparation card, connected card does not show the red action until swiped, swipe animation feels acceptable, battery percentage matches the displayed voltage, and refresh does not visibly block the page.
+
+## T-021 Auto Scan, Nonblocking BLE UI, Edge Status Bar, Control Tabs Baseline
+
+- Date: 2026-04-28.
+- Scope: App/UI-layer refinement plus Android status bar presentation; BLE native plugin, protocol HEX, and `deviceController.ts` command semantics were not changed.
+- Startup discovery: `App.start()` now schedules a non-blocking initial background scan for `AC632N_1` after first render.
+- Nonblocking discovery: continuous discovery `+` starts without awaiting the first scan round; scan/connect operation tokens ignore stale callbacks after disconnect or newer operations.
+- Disconnect behavior: a manually disconnected device remains visible as connectable and is demoted below other connectable scan results; auto-connect skips the recently disconnected device until the user taps it or a new connect path clears the marker.
+- Detail entry: tapping the active device during `connecting/discovering/subscribing/ready` opens the detail page instead of triggering duplicate connect; the initial read-status send after ready is fire-and-forget and does not block page entry.
+- Detail page: `设备状态 / 控制面板` are real tabs; default tab is `设备状态`; `控制面板` shows command buttons above the read-only mode strip.
+- Android status bar: `MainActivity.java` enables transparent status bar / edge-to-edge so the app gradient extends behind system time/signal/battery; CSS keeps a conservative top safe area.
+- Verification: TDD red check failed first as expected; `npm.cmd test -- src/app.test.ts` passed 23 tests; `npm.cmd test` passed 5 files / 44 tests; `npm.cmd run build` passed; `npm.cmd run sync` passed; temporary Android Studio JBR `:app:assembleDebug` passed.
+- Pending real-phone check: confirm cold-start auto-scan, `+`/refresh/disconnect-search no visible freeze, disconnected device remains at bottom as connectable, tabs switch correctly, and the vivo status bar uses the app gradient without overlapping the title.
+
+## T-022 UI Scan Stop, Status Bar, Anchor Sections, Current Rule Baseline
+
+- Date: 2026-04-28.
+- Scope: App/UI refinement plus Android status-bar theme hardening; BLE native plugin, protocol HEX, and `deviceController.ts` command semantics were not changed.
+- Continuous discovery: `+ / X` control state is now resolved through a helper; pressing `X` immediately clears App-layer continuous discovery, invalidates stale scan callbacks, and restores `+`.
+- Detail page: `设备状态` and `控制面板` are no longer hidden tabs; both sections render continuously, and the top buttons scroll to the target section.
+- Current display: when `power` is `0`, Live Status uses returned `loadCurrentAmp`; when `power` is nonzero, it displays `(power / 100) * 9.7272A`, rounded to 2 decimals.
+- Android status bar: `MainActivity.java` now sets runtime no-actionbar theme, transparent decor/WebView/status/navigation bars, and theme XML includes transparent system-bar settings.
+- Verification: TDD red check failed first as expected; `npm.cmd test -- src/app.test.ts` passed 25 tests; `npm.cmd test` passed 5 files / 46 tests; `npm.cmd run build` passed; `npm.cmd run sync` passed; temporary Android Studio JBR `:app:assembleDebug` passed.
+- Pending real-phone check: confirm `+` then `X` stops visual continuous discovery, status bar shows gradient on vivo, anchor buttons scroll to the right section, and current display matches brightness.

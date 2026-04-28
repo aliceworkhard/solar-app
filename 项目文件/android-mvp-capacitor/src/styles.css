@@ -26,6 +26,7 @@
   --radius-card: 17px;
   --radius-control: 13px;
   --radius-pill: 999px;
+  --safe-top: max(24px, env(safe-area-inset-top));
 }
 
 * {
@@ -62,16 +63,19 @@ button:disabled {
 }
 
 #app {
-  min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   justify-content: center;
+  background:
+    radial-gradient(circle at 12% 4%, rgba(244, 154, 0, 0.12), transparent 30%),
+    linear-gradient(180deg, #fbfcfd 0%, var(--app-bg) 48%, var(--app-bg-deep) 100%);
 }
 
 .shell {
   width: 100%;
   max-width: 430px;
-  min-height: 100vh;
-  padding: max(8px, env(safe-area-inset-top)) 14px 26px;
+  min-height: 100dvh;
+  padding: calc(var(--safe-top) + 8px) 14px 26px;
 }
 
 .app-header {
@@ -754,6 +758,9 @@ select:focus-visible {
 
 .detail-tabs {
   width: min(100%, 220px);
+  position: sticky;
+  top: calc(var(--safe-top) + 4px);
+  z-index: 6;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0;
@@ -763,25 +770,38 @@ select:focus-visible {
   background: #eef1f6;
 }
 
-.detail-tabs span {
+.detail-tabs button {
   min-height: 38px;
+  border: 0;
   display: grid;
   place-items: center;
   border-radius: 14px;
+  background: transparent;
   color: var(--muted);
   font-size: 13px;
   font-weight: 900;
+  transition:
+    background 180ms ease,
+    color 180ms ease,
+    box-shadow 180ms ease;
 }
 
-.detail-tabs .active {
+.detail-tabs button:hover,
+.detail-tabs button:focus-visible {
   background: #fff;
   color: var(--blue);
   box-shadow: 0 4px 12px rgba(22, 32, 48, 0.08);
+  outline: none;
 }
 
 .control-stack {
   display: grid;
   gap: 12px;
+}
+
+#deviceStatusSection,
+#controlPanelSection {
+  scroll-margin-top: calc(var(--safe-top) + 64px);
 }
 
 .detail-device-card,
@@ -1111,7 +1131,7 @@ select:focus-visible {
 }
 
 .control-mode-strip {
-  margin: 0 0 12px;
+  margin: 12px 0 0;
 }
 
 .seg-btn {

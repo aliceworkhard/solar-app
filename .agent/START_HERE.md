@@ -1,4 +1,4 @@
-# Start Here For Next Agent
+﻿# Start Here For Next Agent
 
 更新时间：2026-04-27
 
@@ -142,5 +142,27 @@ T-020 is complete. The next real-phone check should focus on the latest UI/inter
 - Swipe-left interaction should feel smoother and the red action should have four rounded corners.
 - Control-page Live Status lower chip should show battery percentage from `batteryVoltage` using `2.5V=0%` and `3.4V=100%`.
 - Tapping refresh/search should not visibly block the page while background scanning runs.
+
+If accepted on phone, continue with formal T-001/T-002 sampling or longer BLE stability testing.
+
+## Current Best Next Step - After T-021
+
+T-021 is complete. The next real-phone check should focus on UI responsiveness and status-bar presentation:
+- Cold start should automatically begin scanning for `AC632N_1` without tapping refresh.
+- The `+` button, refresh, and searching after disconnect should not freeze the page.
+- A manually disconnected device should remain visible as connectable and appear below other connectable results.
+- Quickly entering the detail page while connection/status sync is still settling should not trigger duplicate connect or block the page.
+- The top Android status bar should show the app gradient behind time/signal/battery, without overlapping the page title.
+- The detail tabs should switch between `设备状态` and `控制面板`; command buttons should sit above the mode strip in the control tab.
+
+If accepted on phone, continue with formal T-001/T-002 sampling or longer BLE stability testing.
+
+## Current Best Next Step - After T-022
+
+T-022 is complete. The next real-phone check should focus on the corrected interaction details:
+- On the home page, tap `+`, then tap `X`; the button should immediately return to `+` and the UI should not appear stuck in continuous discovery.
+- The top Android system status bar should show the app gradient behind time/signal/battery as much as vivo WebView allows.
+- On the detail page, `设备状态` and `控制面板` should both be visible in one vertical page; tapping the two top buttons should scroll to the matching section.
+- In Live Status, when brightness is `0%`, current should use the returned current value; when brightness is nonzero, current should use `brightness / 100 * 9.7272A`.
 
 If accepted on phone, continue with formal T-001/T-002 sampling or longer BLE stability testing.
