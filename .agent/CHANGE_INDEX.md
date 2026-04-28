@@ -356,3 +356,52 @@ Key files:
 - `项目文件/android-mvp-capacitor/android/app/src/main/res/values/styles.xml`
 - `.agent/plans/2026-04-28-t022-ui-scan-stop-statusbar-current.md`
 - `.agent/approvals/2026-04-28-t022-ui-scan-stop-statusbar-current.md`
+
+## M17 - T-025 bottom navigation, compact detail, and status bar retry
+
+Date: 2026-04-28
+
+Summary: Added the first bottom navigation layer with `设备 / 场景 / 我的`, introduced a reserved scene page and a static profile/settings page based on `04_profile_settings_page.png`, compressed the detail-page top spacing, and tried one more Android status-bar gradient fallback using a native window/decor drawable.
+
+Key conclusions:
+- The new bottom navigation is App/UI-layer only; BLE native behavior, protocol HEX, and `deviceController.ts` command semantics were not changed.
+- `设备` retains the existing home/detail BLE flow; `场景` is intentionally blank/reserved; `我的` is local static UI only.
+- Android now applies `status_bar_gradient.xml` behind the transparent system bars and WebView, but vivo real-phone validation is still required.
+- 390px local browser checks reported no horizontal overflow for device/profile/scene.
+
+Related logs:
+- `.agent/logs/2026-04-28-session-11.md`
+
+Key files:
+- `项目文件/android-mvp-capacitor/src/app.ts`
+- `项目文件/android-mvp-capacitor/src/styles.css`
+- `项目文件/android-mvp-capacitor/src/app.test.ts`
+- `项目文件/android-mvp-capacitor/android/app/src/main/java/com/solar/remote/MainActivity.java`
+- `项目文件/android-mvp-capacitor/android/app/src/main/res/drawable/status_bar_gradient.xml`
+- `.agent/plans/2026-04-28-t025-statusbar-compact-bottom-tabs.md`
+- `.agent/approvals/2026-04-28-t025-statusbar-compact-bottom-tabs.md`
+
+## M18 - T-026 profile density and safe bottom navigation
+
+Date: 2026-04-28
+
+Summary: Reworked the T-025 profile/settings page density and bottom tab sizing after real-phone feedback that profile stats stacked, scene items became 2x2, and new text/bottom navigation were too large.
+
+Key conclusions:
+- The profile stats collapse was caused by a `max-width: 360px` rule that included `.profile-device-stats` in the one-column group.
+- The scene 2x2 layout was caused by the same narrow media query overriding `.profile-scene-grid` to two columns.
+- T-026 keeps `我的设备` as one row with 3 compact labels and `我的场景` as one row with 4 compact labels at 320/360/390px.
+- The bottom tab bar is now smaller and uses dedicated safe-area variables; local Chrome checks show about 57px nav height when bottom safe area is 0.
+- BLE native behavior, protocol HEX, normal-command response waiting, and `deviceController.ts` were not changed.
+- A non-`testOnly` sideload APK was exported and signature/manifest checks passed.
+
+Related logs:
+- `.agent/logs/2026-04-28-session-13.md`
+
+Key files:
+- `项目文件/android-mvp-capacitor/src/app.ts`
+- `项目文件/android-mvp-capacitor/src/styles.css`
+- `项目文件/android-mvp-capacitor/src/app.test.ts`
+- `.agent/plans/2026-04-28-t026-profile-density-safe-nav.md`
+- `.agent/approvals/2026-04-28-t026-profile-density-safe-nav.md`
+- `.agent/reports/2026-04-28-t026-layout-check.cjs`

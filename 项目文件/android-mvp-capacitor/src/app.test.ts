@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+  BOTTOM_NAV_ITEMS,
   BUSINESS_COMMANDS,
   DETAIL_SECTION_ANCHORS,
   DEVICE_ASSET_SRC,
   DEVICE_STALE_AFTER_MS,
   DISCOVERY_INTERVAL_MS,
   LOAD_CURRENT_BRIGHTNESS_FACTOR_AMP,
+  PROFILE_PAGE_COPY,
   REFERENCE_UI_CHROME,
   REFERENCE_UI_COPY,
   STATUS_POLL_INTERVAL_MS,
@@ -24,6 +26,7 @@ import {
   mergeDiscoveryDevices,
   resolveNativeBackAction,
   resolveBackNavigation,
+  resolveBottomNavTab,
   resolveDiscoveryControlState,
   resolveSwipeDisconnectState,
   shouldAutoConnectSupportedDevice,
@@ -51,6 +54,9 @@ describe("App UI command model", () => {
   it("keeps the two-page shell aligned to the provided Chinese reference screens", () => {
     expect(REFERENCE_UI_COPY.homeTitle).toBe("设备");
     expect(REFERENCE_UI_COPY.homeSubtitle).toBe("连接并管理您的 MPPT 设备");
+    expect(REFERENCE_UI_COPY.sceneTitle).toBe("场景");
+    expect(REFERENCE_UI_COPY.profileTitle).toBe("我的");
+    expect(REFERENCE_UI_COPY.profileSubtitle).toBe("管理您的账号与应用设置");
     expect(REFERENCE_UI_COPY.scanSearching).toBe("正在搜索附近设备...");
     expect(REFERENCE_UI_COPY.nearbySectionTitle).toBe("附近设备");
     expect(REFERENCE_UI_COPY.controlTabs).toEqual(["设备状态", "控制面板"]);
@@ -69,10 +75,30 @@ describe("App UI command model", () => {
     expect(REFERENCE_UI_CHROME.showHomeScanCard).toBe(false);
     expect(REFERENCE_UI_CHROME.modeSelectorPlacement).toBe("control-panel-bottom");
     expect(REFERENCE_UI_CHROME.detailNavigationMode).toBe("anchor-scroll");
+    expect(REFERENCE_UI_CHROME.bottomNavigation).toBe(true);
+    expect(REFERENCE_UI_CHROME.statusBarGradientFallback).toBe(true);
     expect(DETAIL_SECTION_ANCHORS).toEqual({
       status: "deviceStatusSection",
       controls: "controlPanelSection"
     });
+  });
+
+  it("defines the bottom tabs and the profile page copy without changing BLE command paths", () => {
+    expect(BOTTOM_NAV_ITEMS.map((item) => item.label)).toEqual(["设备", "场景", "我的"]);
+    expect(BOTTOM_NAV_ITEMS.map((item) => item.id)).toEqual(["device", "scene", "profile"]);
+    expect(PROFILE_PAGE_COPY.userName).toBe("MPPT 用户");
+    expect(PROFILE_PAGE_COPY.settings).toContain("固件升级");
+    expect(resolveBottomNavTab("home")).toBe("device");
+    expect(resolveBottomNavTab("control")).toBe("device");
+    expect(resolveBottomNavTab("scene")).toBe("scene");
+    expect(resolveBottomNavTab("profile")).toBe("profile");
+  });
+
+  it("uses compact profile labels that can stay in one row on narrow Android screens", () => {
+    expect((PROFILE_PAGE_COPY as any).deviceStatLabels).toEqual(["在线", "可连", "离线"]);
+    expect((PROFILE_PAGE_COPY as any).sceneLabels).toEqual(["夜间", "日常", "节能", "高亮"]);
+    expect((PROFILE_PAGE_COPY as any).deviceStatLabels.every((label: string) => label.length <= 2)).toBe(true);
+    expect((PROFILE_PAGE_COPY as any).sceneLabels.every((label: string) => label.length <= 2)).toBe(true);
   });
 
   it("maps the two-page control surface to the five RF MVP commands once each", () => {
@@ -205,11 +231,15 @@ describe("App discovery model", () => {
   it("maps system back from control to home before allowing app exit", () => {
     expect(resolveBackNavigation("control")).toBe("home");
     expect(resolveBackNavigation("home")).toBe("exit");
+    expect(resolveBackNavigation("scene")).toBe("exit");
+    expect(resolveBackNavigation("profile")).toBe("exit");
   });
 
   it("consumes Android native back on the control page and allows exit from home", () => {
     expect(resolveNativeBackAction("control")).toBe("handled");
     expect(resolveNativeBackAction("home")).toBe("exit");
+    expect(resolveNativeBackAction("scene")).toBe("exit");
+    expect(resolveNativeBackAction("profile")).toBe("exit");
   });
 
   it("builds a Live Status model from real read-status fields only", () => {

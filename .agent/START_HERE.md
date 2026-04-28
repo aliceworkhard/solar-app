@@ -29,23 +29,33 @@
 
 ## Current Best Next Step
 
-T-022 后的当前优先事项是交接给 QA/BLE/Protocol 方向做真机验收，不要继续凭感觉改 UI 或 BLE 参数。
+T-022 后项目已由下一位 agent 接手。用户最新确认：T-001/T-002 先不做，任务保留；不要继续凭感觉改 UI 或 BLE 参数。
 
 接手入口：
 
 - 最新交接总览：`.agent/handoffs/NEXT_AGENT_HANDOFF.md`
 - 正式交接快照：`.agent/handoffs/2026-04-28-Orchestrator-next-agent-project-handoff.md`
 
-优先任务：
+保留任务：
 
 1. `T-001`：补齐 20 次真机扫描/连接性能采样，任务包 `.agent/tasks/active/T-001-performance-sampling.md`。
 2. `T-002`：复测 5 条 MVP 命令，任务包 `.agent/tasks/active/T-002-command-retest.md`。
 3. `T-010`：必须等 T-001/T-009 有真实数据后，再考虑优化持续发现策略。
 
+当前等待：
+
+- T-026 已按用户反馈再压缩 `我的` 页和底部导航：`我的设备` 在窄屏保持 1 行 3 项，`我的场景` 保持 1 行 4 项，新增文字/图标/底栏均更小。
+- 最新可侧载 APK：`交付物/solar-remote-t026-sideload.apk`，英文路径副本 `C:\solar-apk\solar-remote-t026-sideload.apk`，manifest 已确认不含 `testOnly`。
+- T-025/T-026 的状态栏/底栏效果仍需 vivo 真机复验：顶部是否真正铺到系统状态栏、底栏是否避开系统导航区域。
+- 详情页顶部间距已压缩；锚点滚动是否还需改等待真机反馈。
+- 电流显示规则已通过。
+
 已知前提：
 
 - `T-001` / `T-002` 目前只有可行性冒烟测试结论：使用 vivo X300 Pro 测试，连接、收发、5 条 MVP 命令均未发现传输错误。
 - 正式量化验收仍需后补：`T-001` 的 20 次扫描/连接 P50/P90，以及 `T-002` 的 5 条命令各 10 次逐条记录。
+- 协议回传口径：只有读状态和读参数需要关注回传；其他控制命令不用回传。
+- 开/关按当前指令执行，能否区分独立开机/关机仍待真机确认。
 - 可行性记录：`.agent/reports/2026-04-27-feasibility-smoke-test.md`。
 - 正式补测模板：`.agent/reports/templates/`。
 

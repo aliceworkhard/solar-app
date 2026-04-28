@@ -17,13 +17,13 @@
 
 - [ ] T-001 补齐 20 次真机性能采样
   - 优先级：P0
-  - 状态：Feasibility Passed；用户反馈使用 vivo X300 Pro 测试未发现扫描/连接/传输问题，正式 20 次采样与 P50/P90 后补
+  - 状态：Deferred；用户明确要求先不做、任务保留；用户反馈使用 vivo X300 Pro 测试未发现扫描/连接/传输问题，正式 20 次采样与 P50/P90 后补
   - 涉及文件：`项目文件/通信参数确认表.md`
   - 验收标准：记录 20 次扫描首包耗时、连接到 `ready` 耗时、是否 fallback、失败原因，并计算 P50/P90；无真实样本时只能标记阻塞，不伪造结果。
 
 - [ ] T-002 复测 5 条 MVP 命令
   - 优先级：P0
-  - 状态：Feasibility Passed；用户反馈 5 条 MVP 命令可行性良好、无传输错误，逐次 TX/RX 表后补
+  - 状态：Deferred；用户明确要求先不做、任务保留；用户反馈 5 条 MVP 命令可行性良好、无传输错误，逐次 TX/RX 表后补
   - 涉及文件：`项目文件/最小命令集表.md`
   - 前置状态：App 已接入最新最小命令集，读状态命令为 `FF CE 06 00 0E 00 00 30 11`。
   - 验收标准：开/关、增加亮度、降低亮度、读参数、读状态各执行 10 次，记录是否有 notify、是否更新 UI、失败表现。
@@ -50,50 +50,34 @@
   - 优先级：P1
   - 验收标准：连续发送/接收不崩溃，断线、设备重启、App 前后台切换后可恢复。
 
-- [ ] T-007 做一次旧文档归档压缩
-  - 优先级：P2
-  - 涉及文件：`.agent/archive/`、`.agent/CHANGE_INDEX.md`
-  - 验收标准：把已完成/过期任务摘要归档，保持 `todo.md` 在 150 行以内。
-
 ## Blocked
 
 - [ ] B-001 Gradle 终端验证受阻
-  - 原因：当前终端环境缺 `JAVA_HOME`。
-  - 下一步：安装或指定 JDK 后复验 Android 构建。
+  - 原因：全局终端环境仍未固定 `JAVA_HOME`；但已多次通过临时指定 Android Studio JBR 构建 debug APK。
+  - 下一步：如需常规终端直接运行，再配置全局 `JAVA_HOME`。
 
-- [ ] B-002 协议回传规则未完全确认
-  - 原因：设备普通指令通常不回传，只有特定指令可能回传。
-  - 下一步：通过真机日志确认哪些指令需要等待 notify。
+- [ ] B-002 读状态/读参数回传特征仍待记录
+  - 原因：用户已确认协议回传只有读状态和读参数；其他控制命令不用回传。
+  - 下一步：后续真机记录只确认读状态/读参数 notify 特征；不要把普通业务命令改成默认等待回包。
 
 - [ ] B-003 开/关是否能区分独立开机/关机未确认
-  - 原因：协议只给出 `0x0A` 开/关控制命令，未给出独立 on/off 子命令。
+  - 原因：当前按 `0x0A` 开/关控制命令执行，能否区分独立开机/关机仍待真机确认。
   - 下一步：真机测试 `FF CE 06 00 0A 00 00 30 0D` 的行为。
+
+- [ ] B-004 vivo 状态栏渐变真机未通过
+  - 原因：T-025 已再做一版 native/window 渐变兜底；仍需 vivo 真机确认是否能进入系统顶部状态栏区域。
+  - 下一步：安装最新 debug APK 后真机复验；如果仍不通过，先暂停，不继续凭感觉改。
+
+- [ ] B-005 详情页锚点可能需要调整
+  - 原因：T-025 已压缩详情页顶部间距；锚点滚动是否还需改等待真机反馈。
+  - 下一步：等待用户补充信息后再判断是否写方案。
 
 ## Recently Done
 
+- [x] T-026 Profile 密度与安全底栏修正：`我的设备` 改为短标签并在窄屏保持 1 行 3 项，`我的场景` 改为短标签并在窄屏保持 1 行 4 项；新增内容字号、图标、卡片间距和底部导航均收紧；底栏使用独立 safe-area 变量，顶部 profile header 间距同步压缩；`npm.cmd test -- src/app.test.ts`、`npm.cmd test`、`npm.cmd run build`、`npm.cmd run sync`、JBR `:app:assembleDebug --project-prop android.injected.testOnly=false` 通过；320/360/390px 浏览器自动检查无横向溢出且 profile 行数符合要求；已导出非 `testOnly` APK `交付物/solar-remote-t026-sideload.apk` 和 `C:\solar-apk\solar-remote-t026-sideload.apk`。
+- [x] T-025 状态栏渐变、详情页压缩、底部三栏页面：新增底部导航 `设备/场景/我的`，`场景` 为预留页，`我的` 参考 `04_profile_settings_page.png` 做静态信息页；详情页顶部 spacing 已压缩；Android 增加 `status_bar_gradient` native/window 背景兜底；`npm.cmd test -- src/app.test.ts`、`npm.cmd test`、`npm.cmd run build`、`npm.cmd run sync`、JBR `:app:assembleDebug` 通过；390px 本地浏览器检查无横向溢出，Profile 截图已生成。
+- [x] T-007 `Recently Done` 精简：保留当前仍影响接手判断的近期完成项；更早历史改从 `.agent/CHANGE_INDEX.md` 和定向 session log 查找；未移动日志、未改业务代码。
+- [x] T-024 接手后状态口径同步：已记录用户最新口径：T-001/T-002 先不做但保留；协议回传只有读状态和读参数，其他控制命令不用回传；开/关按当前指令执行但独立开/关仍待真机确认；状态栏渐变真机未通过，是否再改等用户决定；详情页锚点等待用户信息；电流显示规则已通过。未改业务代码、协议实现、UI 或 Android 原生文件。
 - [x] T-023 下一个 agent 项目接手包整理：已更新 `.agent/handoffs/NEXT_AGENT_HANDOFF.md` 和正式交接快照 `.agent/handoffs/2026-04-28-Orchestrator-next-agent-project-handoff.md`；`.agent/START_HERE.md` 顶部当前下一步已指向 T-001/T-002；已修正 `项目文件/上传日志.md` 最新 T-022 记录格式；未改业务代码。
 - [x] T-022 UI 扫描停止、状态栏渐变、详情锚点与电流规则修正：`+ / X` 持续发现按钮改为独立状态 helper，点 `X` 会立即失效旧扫描回调并恢复 `+`；详情页取消隐藏式 tab，`设备状态` 与 `控制面板` 连续展示，顶部按钮改为锚点定位；电流显示规则改为亮度 `0` 用回传电流、亮度非 `0` 用 `power / 100 * 9.7272A`；Android 状态栏 theme/runtime/WebView 透明处理增强；`npm.cmd test -- src/app.test.ts`、`npm.cmd test`、`npm.cmd run build`、`npm.cmd run sync`、JBR `:app:assembleDebug` 通过。
-- [x] T-021 启动自动扫描、状态栏渐变延伸、详情页 tab 化与 BLE UI 卡顿修复：打开 App 后会自动后台扫描 `AC632N_1`；`+` 持续发现改为非阻塞启动；扫描/连接异步流程加入 operation token，过期回调不再覆盖当前 UI；断开后设备保留为可连接并降到列表下方；连接后首次读状态改为后台发送，快速进入详情不阻塞；详情页支持“设备状态 / 控制面板”tab 切换，控制面板内命令区在上、模式按钮在下；Android 状态栏改为透明 edge-to-edge；`npm.cmd test -- src/app.test.ts`、`npm.cmd test`、`npm.cmd run build`、`npm.cmd run sync`、JBR `:app:assembleDebug` 通过。
-- [x] T-020 首页搜索卡片移除、左滑动效、电量百分比和后台扫描优化：删除首页“准备搜索附近设备”卡片；刷新/查询改为后台扫描并通过进度回调增量更新列表或自动连接；已连接卡片静止时改为完全不透明，左滑取消连接增加拖动反馈、缓动和四角圆角；Live Status 下方第三个 chip 改为电量 `%`，按 `2.5V=0%`、`3.4V=100%` 线性换算并钳制；`npm.cmd test -- src/app.test.ts`、`npm.cmd test`、`npm.cmd run build`、`npm.cmd run sync`、JBR `:app:assembleDebug` 通过。
-- [x] T-019 UI 卡片收敛与 5s 读状态轮询：首页已移除“当前设备”整块；附近设备卡片 RSSI 移到右侧，4 项指标改为无框左右排版；已连接设备支持左滑显示“取消连接”；控制页 Live Status 改为电池电压、模式、太阳能电压等真实字段且不显示固件；模式按钮移到控制面板顶部；连接 ready 后每 5s 自动发送一次读状态；`npm.cmd test -- src/app.test.ts`、`npm.cmd test`、`npm.cmd run build`、`npm.cmd run sync`、JBR `:app:assembleDebug` 通过。
-- [x] T-018 Android back dispatch + Live Status layout + nearby-device 2x2 metrics: Android native back now calls WebView JS so control-page system/gesture back can return home before exit; control-page status area uses a Live Status card; nearby-device cards expose current mode, battery voltage, solar voltage, and brightness metrics; `npm.cmd test`, `npm.cmd run build`, `npm.cmd run sync`, temporary-JBR `:app:compileDebugJavaWithJavac`, and `:app:assembleDebug` passed. Needs real-phone gesture retest.
-- [x] T-017 UI navigation and compact layout polish: homepage refresh now only refreshes the device list, control-page entry uses WebView history so system Back returns home first, placeholder phone chrome / control-page dots / default waiting card were removed, home device cards and control detail cards were compacted, typography scale was reduced; `npm.cmd test`, `npm.cmd run build`, and Chrome 430px screenshot verification passed.
-- [x] T-016 UI reference realignment: home/control pages restyled closer to the provided reference images and HTML prototype; only `AC632N_1` remains visible/connectable; auto-connect/read-status/card navigation and five MVP commands preserved; `npm.cmd test`, `npm.cmd run build`, and Chrome CDP 390px overflow checks passed.
-- [x] T-015 AC632N_1 whitelist + auto-connect + connected-card navigation fix: only `AC632N_1` enters the UI list/connect flow; scan result can auto-connect the target; connect success sends one `readStatus`; tapping the already connected device card enters the control page instead of reconnecting; `npm.cmd test` and `npm.cmd run build` passed.
-- [x] T-011 UI convergence: two-page MVP UI rebuilt as real DOM, transparent MPPT device asset added, five MVP command entries and hidden debug console retained; `npm.cmd test` and `npm.cmd run build` passed; Chrome CDP 390px home/control checks reported no horizontal overflow.
-- [x] T-014 Agent 接力整理与测试模板：已记录 T-001/T-002 可行性冒烟测试通过；新增正式验收模板、T-011 UI 任务包、skill 使用说明和 session log；未改业务代码。
-- [x] T-012 读状态回传可读化：电池显示单位改为 `V`；`E1` 状态回传的工作时长、亮度、电池电压、电池电流、太阳能电压已转为结构化可读状态；短包不更新业务状态；测试与构建通过。
-- [x] T-013 Skill 白名单二次筛选与安装：已安装 `kb-retriever`、`web-design-engineer`、`gpt-image-2`、`requesting-code-review`、`receiving-code-review`、`security-best-practices`；已更新白名单与安装日志；`gpt-image-2` 作为图片工作流首选，但未覆盖系统 `.system/imagegen`。
-- [x] T-009 建立先方案后修改流程：已新增项目级 skill、流程文档、计划模板、审批模板，并接入 `AGENTS.md`。
-- [x] BLE 主链路已跑通：可连接、可发送、可接收。
-- [x] 写入方式已锁定为 `write`。
-- [x] RAW 调试发送已改为不等待 BLE 回包。
-- [x] 普通业务命令已改为写入成功即返回。
-- [x] T-003 响应等待策略已固化：5 条 MVP 命令默认不等待回包，显式等待路径已补单测，写入失败会清理 pending 后重试。
-- [x] BLE 扫描/连接提速方案已实现。
-- [x] 根据 `docs/improve.md` 建立 `.agent` 记忆框架。
-- [x] 建立多 agent 协作框架、任务包、交接模板和文件所有权规则。
-- [x] 按正式协议把 MVP 命令从 `AA 55` 临时帧切换为 `FF CE` RF 控制帧。
-- [x] 固化读参数命令：`FF CE 06 00 0D 00 00 30 10`。
-- [x] T-004 两页业务 UI 已收敛：主页反馈可见，控制页 5 个 RF 命令一一映射，调试台隐藏保留。
-- [x] T-009 持续发现现阶段已实现：扫描按钮可开始/停止，5 秒补扫，同名设备按 MAC 区分，新设备追加，已连接设备不清除。
+- [x] 更早完成项已归入历史索引：BLE 主链路、正式 RF 协议切换、普通命令不等待回包、读状态解析、两页 UI、`AC632N_1` 目标流、多轮 UI/Android 交互修正等，详见 `.agent/CHANGE_INDEX.md` 的 M01-M16 和对应 `.agent/logs/`。

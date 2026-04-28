@@ -38,7 +38,7 @@
 
 ## Current Verification State
 
-- `npm.cmd test`：最近一次通过，5 个测试文件、46 个测试通过。
+- `npm.cmd test`：最近一次通过，5 个测试文件、48 个测试通过。
 - T-003 响应等待策略：5 条 MVP 命令默认不等待回包；显式 `waitForResponse=true` 路径已补单测，写入失败会清理 pending 后重试。
 - T-004 两页业务 UI：主页扫描/快连/连接反馈可见，控制页 5 个 RF 命令一一映射到 `DeviceController`，调试台隐藏保留。
 - T-002 前置接入：App 面向方法已锁定 5 条最小命令集 HEX，并有 `CommandBuilder` 与 `DeviceController` 写入链路测试覆盖。
@@ -48,6 +48,9 @@
 - `npm.cmd run build`：最近一次通过。
 - Gradle 终端构建：可用 Android Studio JBR 临时设置 `JAVA_HOME` 后执行 `:app:assembleDebug`；最近一次通过。
 - Android 真机：BLE 已能发送和接收；正式量化采样和命令逐次复测记录仍需后补。
+- 2026-04-28 接手后用户确认：T-001/T-002 先不做，任务保留；协议回传只有读状态和读参数，其他控制命令不用回传；开/关按当前指令执行，能否区分独立开机/关机仍待真机确认；状态栏渐变真机未通过，是否再改等用户后续决定；详情页锚点可能要改但等待用户信息；电流显示规则已通过。
+- T-025 UI：底部导航 `设备/场景/我的` 已加入；`场景` 为预留页；`我的` 为静态信息页；详情页顶部更紧凑；Android 增加 native/window 渐变兜底；测试、build、sync、debug APK 构建通过，状态栏效果仍需 vivo 真机复验。
+- T-026 UI：`我的设备` 与 `我的场景` 已改为窄屏单行并排、短标签和更小字号；底部导航更紧凑并使用 safe-area spacing；320/360/390px 本地浏览器检查通过；已导出非 `testOnly` APK。
 
 ## Working Rules
 
@@ -129,11 +132,14 @@
 
 ## Current Open Problems
 
-- T-001 20 次扫描/连接性能采样未补齐；当前只有可行性通过结论。
-- T-002 5 条 MVP 命令逐次复测数据未补齐；当前只有可行性通过结论。
+- T-001 20 次扫描/连接性能采样未补齐；当前只有可行性通过结论；用户已要求先不做、任务保留。
+- T-002 5 条 MVP 命令逐次复测数据未补齐；当前只有可行性通过结论；用户已要求先不做、任务保留。
 - T-009 持续发现仍需真机验证补扫间隔、过期时间和进入控制页后的低频保活策略。
-- 哪些特定指令稳定有回传仍待真机复测确认；程序默认不等待，仅允许显式标记命令等待。
-- 开/关命令在协议中是单一 `0x0A` 控制命令，是否能区分开机/关机仍待真机确认。
+- 协议回传口径已由用户确认：只有读状态和读参数需要关注回传，其他控制命令不用回传；程序默认不等待，仅允许显式标记命令等待。
+- 开/关命令按当前 `0x0A` 指令执行，是否能区分独立开机/关机仍待真机确认。
+- vivo/Android 状态栏渐变已在 T-025 再试一版 native/window 背景兜底；是否真正进入系统顶部状态栏区域仍需真机复验。
+- T-026 已针对底部导航和 profile 页面密度再改一版；仍需 vivo 真机视觉确认底栏是否避开系统导航区域、顶部是否无重叠。
+- 详情页顶部间距已在 T-025 压缩；锚点滚动是否还需改等待真机反馈。
 - Debug APK 可通过临时设置 Android Studio JBR `JAVA_HOME` 验证；如需全局常规命令仍可后续配置环境变量。
 - 多 agent 框架已建立，但还未经过一次真实多人协作演练。
 
@@ -202,3 +208,24 @@
 - Android status bar: `MainActivity.java` now sets runtime no-actionbar theme, transparent decor/WebView/status/navigation bars, and theme XML includes transparent system-bar settings.
 - Verification: TDD red check failed first as expected; `npm.cmd test -- src/app.test.ts` passed 25 tests; `npm.cmd test` passed 5 files / 46 tests; `npm.cmd run build` passed; `npm.cmd run sync` passed; temporary Android Studio JBR `:app:assembleDebug` passed.
 - Pending real-phone check: confirm `+` then `X` stops visual continuous discovery, status bar shows gradient on vivo, anchor buttons scroll to the right section, and current display matches brightness.
+
+## T-025 Bottom Navigation And Status Bar Retry Baseline
+
+- Date: 2026-04-28.
+- Scope: App/UI refinement plus Android status-bar background fallback; BLE native plugin behavior, protocol HEX, and `deviceController.ts` command semantics were not changed.
+- UI: added bottom navigation with `设备 / 场景 / 我的`; `场景` is a reserved blank page; `我的` is a static profile/settings page based on `04_profile_settings_page.png`.
+- Detail page: reduced top padding/header/tab spacing so the device name and status cards sit higher.
+- Android: added `status_bar_gradient.xml` and applies it to the native window/decor background while preserving transparent system bars and WebView transparency.
+- Verification: `npm.cmd test -- src/app.test.ts` passed 26 tests; `npm.cmd test` passed 5 files / 47 tests; `npm.cmd run build` passed; `npm.cmd run sync` passed; JBR `:app:assembleDebug` passed; 390px local browser check reported no horizontal overflow for device/profile/scene.
+- Pending real-phone check: confirm vivo status bar gradient, compact detail spacing, and bottom navigation usability.
+
+## T-026 Profile Density And Safe Bottom Navigation Baseline
+
+- Date: 2026-04-28.
+- Scope: App/UI density and safe-area refinement only; BLE native behavior, protocol HEX, normal-command response waiting, and `deviceController.ts` were not changed.
+- Profile page: `我的设备` now uses compact labels `在线 / 可连 / 离线` and stays as one row with three items on 320/360/390px widths.
+- Profile page: `我的场景` now uses compact labels `夜间 / 日常 / 节能 / 高亮` and stays as one row with four items on 320/360/390px widths.
+- Bottom navigation: reduced icon/text/item sizes and uses dedicated `--safe-bottom` / `--bottom-nav-space` CSS variables; local browser check reports nav height about 57px when safe-area bottom is 0.
+- Verification: TDD red check failed first as expected; `npm.cmd test -- src/app.test.ts` passed 27 tests; `npm.cmd test` passed 5 files / 48 tests; `npm.cmd run build` passed; `npm.cmd run sync` passed; local Chrome layout check passed at 320/360/390px with no horizontal overflow; JBR `:app:assembleDebug --project-prop android.injected.testOnly=false` passed.
+- Delivery: `交付物/solar-remote-t026-sideload.apk` and `C:\solar-apk\solar-remote-t026-sideload.apk`; SHA256 `901050A738DDF4C163439DEB550A8AEF7C799FBF6EA9483840F6F3E95B3EFDD0`; manifest check reports `NO_TEST_ONLY`; `apksigner verify --verbose` verifies.
+- Pending real-phone check: confirm the compact bottom tab bar avoids vivo system navigation interference and the top area has no status-bar overlap.

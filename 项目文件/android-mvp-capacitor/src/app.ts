@@ -2,7 +2,8 @@ import { DeviceController } from "./device/deviceController";
 import { spacedHex } from "./utils/hex";
 import type { DeviceBrief, DeviceStatus, LogEntry } from "./types";
 
-type ViewName = "home" | "control";
+type ViewName = "home" | "control" | "scene" | "profile";
+type BottomNavTab = "device" | "scene" | "profile";
 type BackNavigationResult = "home" | "exit";
 type NativeBackAction = "handled" | "exit";
 type SwipeDisconnectState = "closed" | "open";
@@ -55,6 +56,12 @@ export interface DiscoveryControlState {
   stageText: string;
 }
 
+export interface BottomNavItem {
+  id: BottomNavTab;
+  label: string;
+  icon: string;
+}
+
 export const BUSINESS_COMMANDS: BusinessCommand[] = [
   {
     id: "readStatusBtn",
@@ -99,6 +106,10 @@ export const LOAD_CURRENT_BRIGHTNESS_FACTOR_AMP = 9.7272;
 export const REFERENCE_UI_COPY = {
   homeTitle: "设备",
   homeSubtitle: "连接并管理您的 MPPT 设备",
+  sceneTitle: "场景",
+  sceneSubtitle: "预留",
+  profileTitle: "我的",
+  profileSubtitle: "管理您的账号与应用设置",
   scanIdle: "准备搜索附近设备",
   scanSearching: "正在搜索附近设备...",
   scanHint: "请确保设备已通电并开启蓝牙",
@@ -113,7 +124,24 @@ export const REFERENCE_UI_CHROME = {
   showHomeSummaryCard: false,
   showHomeScanCard: false,
   modeSelectorPlacement: "control-panel-bottom",
-  detailNavigationMode: "anchor-scroll"
+  detailNavigationMode: "anchor-scroll",
+  bottomNavigation: true,
+  statusBarGradientFallback: true
+} as const;
+export const BOTTOM_NAV_ITEMS: BottomNavItem[] = [
+  { id: "device", label: "设备", icon: "▣" },
+  { id: "scene", label: "场景", icon: "◇" },
+  { id: "profile", label: "我的", icon: "●" }
+];
+export const PROFILE_PAGE_COPY = {
+  userName: "MPPT 用户",
+  userId: "20240501001",
+  userTag: "普通用户",
+  deviceSectionTitle: "我的设备",
+  sceneSectionTitle: "我的场景",
+  deviceStatLabels: ["在线", "可连", "离线"],
+  sceneLabels: ["夜间", "日常", "节能", "高亮"],
+  settings: ["设备共享", "固件升级", "数据统计", "操作日志", "帮助与反馈", "关于我们"]
 } as const;
 
 export function shouldRefreshEnterControl(_status: DeviceStatus): boolean {
@@ -126,6 +154,16 @@ export function resolveBackNavigation(view: ViewName): BackNavigationResult {
 
 export function resolveNativeBackAction(view: ViewName): NativeBackAction {
   return view === "control" ? "handled" : "exit";
+}
+
+export function resolveBottomNavTab(view: ViewName): BottomNavTab {
+  if (view === "scene") {
+    return "scene";
+  }
+  if (view === "profile") {
+    return "profile";
+  }
+  return "device";
 }
 
 export function isControlReady(status: DeviceStatus): boolean {
@@ -429,19 +467,22 @@ export class App {
 
   private render(): void {
     const isControlView = this.view === "control";
+    const isHomeView = this.view === "home";
+    const headerVariant = isControlView ? "detail" : this.view === "profile" ? "profile" : this.view === "scene" ? "scene" : "home";
     const activeDeviceName = this.activeDeviceName();
     const liveStatus = createLiveStatusModel(this.status);
     this.root.innerHTML = `
-      <div class="shell ${isControlView ? "view-control" : "view-home"}">
-        <header class="app-header ${isControlView ? "detail" : "home"}">
+      <div class="shell view-${this.view}">
+        <header class="app-header ${headerVariant}">
           <button class="back-link ${isControlView ? "visible" : ""}" id="backBtn" type="button" aria-label="返回">‹</button>
           <div class="page-title" id="brandTrigger">
-            <h1>${isControlView ? activeDeviceName : REFERENCE_UI_COPY.homeTitle}</h1>
-            <p>${isControlView ? "设备状态与控制" : REFERENCE_UI_COPY.homeSubtitle}</p>
+            <h1>${this.pageTitle(activeDeviceName)}</h1>
+            <p>${this.pageSubtitle()}</p>
           </div>
           <div class="top-actions">
             <div class="conn-badge" id="connBadge">未连接</div>
-            <button class="scan-fab ${isControlView ? "hidden" : ""}" id="scanBtn" title="持续发现设备" type="button">+</button>
+            <button class="scan-fab ${isHomeView ? "" : "hidden"}" id="scanBtn" title="持续发现设备" type="button">+</button>
+            ${this.view === "profile" ? this.renderProfileHeaderActions() : ""}
           </div>
         </header>
 
@@ -538,6 +579,10 @@ export class App {
             </div>
           </section>
 
+          ${this.renderScenePanel()}
+
+          ${this.renderProfilePanel()}
+
           <section class="panel debug ${this.debugVisible ? "active" : ""}" id="debugPanel">
             <div class="toolbar">
               <div class="chip">调试控制台</div>
@@ -558,6 +603,7 @@ export class App {
             <pre id="logArea"></pre>
           </section>
         </main>
+        ${this.renderBottomNavigation()}
       </div>
     `;
 
@@ -569,6 +615,143 @@ export class App {
     this.refreshScanControls();
   }
 
+  private pageTitle(activeDeviceName: string): string {
+    if (this.view === "control") {
+      return activeDeviceName;
+    }
+    if (this.view === "scene") {
+      return REFERENCE_UI_COPY.sceneTitle;
+    }
+    if (this.view === "profile") {
+      return REFERENCE_UI_COPY.profileTitle;
+    }
+    return REFERENCE_UI_COPY.homeTitle;
+  }
+
+  private pageSubtitle(): string {
+    if (this.view === "control") {
+      return "设备状态与控制";
+    }
+    if (this.view === "scene") {
+      return REFERENCE_UI_COPY.sceneSubtitle;
+    }
+    if (this.view === "profile") {
+      return REFERENCE_UI_COPY.profileSubtitle;
+    }
+    return REFERENCE_UI_COPY.homeSubtitle;
+  }
+
+  private renderProfileHeaderActions(): string {
+    return `
+      <button class="header-icon-button" type="button" aria-label="通知">⌂</button>
+      <button class="header-icon-button" type="button" aria-label="设置">⌾</button>
+    `;
+  }
+
+  private renderScenePanel(): string {
+    return `
+      <section class="panel scene-panel ${this.view === "scene" ? "active" : ""}" id="scenePanel" aria-label="场景预留">
+        <div class="scene-reserved" aria-hidden="true"></div>
+      </section>
+    `;
+  }
+
+  private renderProfilePanel(): string {
+    const totalDevices = Math.max(this.devices.length, this.status.connected ? 1 : 0);
+    const onlineDevices = this.status.connected ? 1 : 0;
+    const connectableDevices = this.devices.filter((device) => !device.isConnected && !device.isStale).length;
+    const offlineDevices = Math.max(totalDevices - onlineDevices - connectableDevices, 0);
+
+    return `
+      <section class="panel profile-panel ${this.view === "profile" ? "active" : ""}" id="profilePanel">
+        <article class="profile-user-card">
+          <span class="profile-avatar" aria-hidden="true"></span>
+          <div class="profile-user-copy">
+            <div class="profile-name-line">
+              <strong>${PROFILE_PAGE_COPY.userName}</strong>
+              <span>${PROFILE_PAGE_COPY.userTag}</span>
+            </div>
+            <p>ID：${PROFILE_PAGE_COPY.userId}</p>
+          </div>
+          <span class="profile-chevron" aria-hidden="true">›</span>
+        </article>
+
+        <article class="profile-card">
+          <div class="profile-card-head">
+            <h2>${PROFILE_PAGE_COPY.deviceSectionTitle}</h2>
+            <span>共 ${totalDevices} 台设备</span>
+          </div>
+          <div class="profile-device-stats">
+            <div><i class="profile-stat-icon blue" aria-hidden="true"></i><span>${PROFILE_PAGE_COPY.deviceStatLabels[0]}</span><strong>${onlineDevices}</strong></div>
+            <div><i class="profile-stat-icon green" aria-hidden="true"></i><span>${PROFILE_PAGE_COPY.deviceStatLabels[1]}</span><strong>${connectableDevices}</strong></div>
+            <div><i class="profile-stat-icon slate" aria-hidden="true"></i><span>${PROFILE_PAGE_COPY.deviceStatLabels[2]}</span><strong>${offlineDevices}</strong></div>
+          </div>
+        </article>
+
+        <article class="profile-card">
+          <div class="profile-card-head">
+            <h2>${PROFILE_PAGE_COPY.sceneSectionTitle}</h2>
+            <span>共 4 个场景</span>
+          </div>
+          <div class="profile-scene-grid">
+            <div><i class="scene-icon moon" aria-hidden="true"></i><span>${PROFILE_PAGE_COPY.sceneLabels[0]}</span></div>
+            <div><i class="scene-icon sun" aria-hidden="true"></i><span>${PROFILE_PAGE_COPY.sceneLabels[1]}</span></div>
+            <div><i class="scene-icon leaf" aria-hidden="true"></i><span>${PROFILE_PAGE_COPY.sceneLabels[2]}</span></div>
+            <div><i class="scene-icon bright" aria-hidden="true"></i><span>${PROFILE_PAGE_COPY.sceneLabels[3]}</span></div>
+          </div>
+        </article>
+
+        <article class="profile-list-card">
+          ${PROFILE_PAGE_COPY.settings
+            .map(
+              (item, index) => `
+                <div class="profile-list-row">
+                  <span class="profile-list-icon tone-${index}" aria-hidden="true"></span>
+                  <div>
+                    <strong>${item}</strong>
+                    <small>${this.profileSettingSubtitle(item)}</small>
+                  </div>
+                  <span class="profile-row-meta">${item === "固件升级" ? "V1.2.3" : ""}</span>
+                  <span class="profile-chevron" aria-hidden="true">›</span>
+                </div>
+              `
+            )
+            .join("")}
+        </article>
+
+        <button class="profile-logout" type="button">退出登录</button>
+      </section>
+    `;
+  }
+
+  private profileSettingSubtitle(item: string): string {
+    const subtitles: Record<string, string> = {
+      设备共享: "与家人或团队共享设备",
+      固件升级: "当前版本 V1.2.3",
+      数据统计: "查看设备使用数据与趋势",
+      操作日志: "查看设备操作记录",
+      帮助与反馈: "使用帮助与问题反馈",
+      关于我们: "了解更多关于 MPPT"
+    };
+    return subtitles[item] || "";
+  }
+
+  private renderBottomNavigation(): string {
+    const activeTab = resolveBottomNavTab(this.view);
+    return `
+      <nav class="bottom-nav" aria-label="底部导航">
+        ${BOTTOM_NAV_ITEMS.map(
+          (item) => `
+            <button class="bottom-nav-item ${activeTab === item.id ? "active" : ""}" data-bottom-tab="${item.id}" type="button" aria-current="${activeTab === item.id ? "page" : "false"}">
+              <span class="bottom-nav-icon" aria-hidden="true">${item.icon}</span>
+              <span>${item.label}</span>
+            </button>
+          `
+        ).join("")}
+      </nav>
+    `;
+  }
+
   private bindEvents(): void {
     this.byId("scanBtn").addEventListener("click", () => {
       void this.toggleContinuousDiscovery();
@@ -578,6 +761,14 @@ export class App {
     });
     this.byId("backBtn").addEventListener("click", () => {
       this.navigateHome();
+    });
+    this.root.querySelectorAll<HTMLButtonElement>(".bottom-nav-item").forEach((button) => {
+      button.addEventListener("click", () => {
+        const tab = button.dataset.bottomTab as BottomNavTab | undefined;
+        if (tab) {
+          this.navigateBottomTab(tab);
+        }
+      });
     });
     this.root.querySelectorAll<HTMLButtonElement>(".detail-tab-button").forEach((button) => {
       button.addEventListener("click", () => {
@@ -1269,6 +1460,18 @@ export class App {
     this.view = "control";
     if (pushHistory && typeof window !== "undefined" && window.history.state?.solarRemoteView !== "control") {
       window.history.pushState({ solarRemoteView: "control" }, "", "#control");
+    }
+    this.render();
+  }
+
+  private navigateBottomTab(tab: BottomNavTab): void {
+    const nextView: ViewName = tab === "device" ? "home" : tab;
+    if (this.view === nextView) {
+      return;
+    }
+    this.view = nextView;
+    if (typeof window !== "undefined") {
+      window.history.replaceState({ solarRemoteView: "home" }, "", window.location.pathname + window.location.search);
     }
     this.render();
   }

@@ -11,8 +11,34 @@
 
 - 仓库：`https://github.com/aliceworkhard/solar-app.git`
 - 分支：`main`
-- 最新提交：`b4d0333 docs: record github backup for t022`
+- 最新提交：`84da1c5 docs: prepare next agent handoff`
 - 代码提交：`3ede780 feat: refine BLE UI anchors and current display`
+
+## Post-Handoff Clarification
+
+2026-04-28 接手后用户补充：
+
+- `T-001` / `T-002` 先不做，任务保留。
+- 协议回传只有读状态和读参数；其他控制命令不用回传。
+- 开/关按当前指令执行，是否能区分独立开机/关机仍待真机确认。
+- 状态栏渐变真机未通过；如果后续要再改，需先走 Plan First 且只做明确批准的一版。
+- 详情页锚点可能需要调整，但等待用户补充信息。
+- 电流显示规则已通过。
+
+2026-04-28 T-025 后补充：
+
+- 已再做一版状态栏渐变：新增 native/window `status_bar_gradient` 背景兜底，仍需 vivo 真机复验。
+- 已新增底部导航 `设备 / 场景 / 我的`。
+- `场景` 为预留页；`我的` 为参考 `04_profile_settings_page.png` 的本地静态信息页。
+- 已压缩详情页顶部 spacing；锚点滚动是否还要改等待真机反馈。
+- T-025 验证通过：`npm.cmd test -- src/app.test.ts`、`npm.cmd test`、`npm.cmd run build`、`npm.cmd run sync`、JBR `:app:assembleDebug`。
+
+2026-04-28 T-026 后补充：
+
+- 已按真机反馈再改 `我的` 页密度：`我的设备` 320/360/390px 保持 1 行 3 项，`我的场景` 保持 1 行 4 项。
+- 新增内容字体、图标、卡片间距和底部导航均缩小；底栏使用 `--safe-bottom` / `--bottom-nav-space` 处理底部安全区。
+- T-026 验证通过：`npm.cmd test -- src/app.test.ts` 27 tests、`npm.cmd test` 5 files / 48 tests、`npm.cmd run build`、`npm.cmd run sync`、320/360/390px Chrome layout check、JBR `:app:assembleDebug --project-prop android.injected.testOnly=false`。
+- 最新 APK：`交付物/solar-remote-t026-sideload.apk`；英文路径副本 `C:\solar-apk\solar-remote-t026-sideload.apk`；SHA256 `901050A738DDF4C163439DEB550A8AEF7C799FBF6EA9483840F6F3E95B3EFDD0`；manifest `NO_TEST_ONLY`，`apksigner verify` 通过。
 
 ## What Works Now
 
@@ -25,7 +51,7 @@
 - 业务命令默认写入成功即返回，不等待 BLE 回包。
 - Notify 到达后解析 `E1` 状态并更新 UI。
 - ready 后每 5 秒非阻塞发送读状态。
-- Debug APK 最近构建通过。
+- Debug APK 最近构建通过；最新可侧载包为 T-026 非 `testOnly` APK。
 
 ## Key Protocol Facts
 
@@ -40,7 +66,9 @@
 
 ## Current Open Tasks
 
-优先做：
+当前用户口径：`T-001` / `T-002` 先不做，任务保留。
+
+保留任务：
 
 1. `T-001` 真机性能采样
    - 目标：20 次扫描首包耗时、20 次连接到 `ready` 耗时、P50/P90、fallback、失败原因。

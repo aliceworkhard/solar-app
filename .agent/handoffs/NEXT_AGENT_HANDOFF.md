@@ -1,6 +1,6 @@
 ﻿# Next Agent Handoff
 
-更新时间：2026-04-28 18:25 +08:00
+更新时间：2026-04-28 20:25 +08:00
 
 ## Read First
 
@@ -20,10 +20,9 @@
 
 - 分支：`main`
 - 远端：`https://github.com/aliceworkhard/solar-app.git`
-- 最新已推送：`80c1208..b4d0333 main -> main`
+- 最新已推送：`84da1c5 docs: prepare next agent handoff`
 - 最新提交：
-  - `3ede780 feat: refine BLE UI anchors and current display`
-  - `b4d0333 docs: record github backup for t022`
+  - `84da1c5 docs: prepare next agent handoff`
 - 当前主工程：`项目文件/android-mvp-capacitor`
 - Android debug APK 最近构建通过：`项目文件/android-mvp-capacitor/android/app/build/outputs/apk/debug/app-debug.apk`
 
@@ -51,22 +50,35 @@
 - ready 后每 5 秒非阻塞发送一次读状态。
 - Live Status 电量按电池电压换算：`2.5V=0%`、`3.4V=100%`。
 - Live Status 电流规则：亮度为 `0%` 时用回传 `loadCurrentAmp`；亮度非 0 时用 `power / 100 * 9.7272A`。
+- 用户已确认电流显示规则通过。
+- 用户已确认协议回传只有读状态和读参数；其他控制命令不用回传。
+- 开/关按当前指令执行，是否能区分独立开机/关机仍待真机确认。
+- T-025 已新增底部导航 `设备/场景/我的`；`场景` 是预留页，`我的` 是本地静态信息页。
+- T-025 已压缩详情页顶部 spacing。
+- T-025 已再做一版 vivo 状态栏渐变 native/window 兜底；是否真正显示到系统顶部状态栏仍需真机复验。
+- T-026 已修正 `我的` 页密度：`我的设备` 在 320/360/390px 保持 1 行 3 项，`我的场景` 保持 1 行 4 项；新增文字、图标和底部导航已缩小。
+- 最新可侧载 APK：`交付物/solar-remote-t026-sideload.apk`；英文路径副本：`C:\solar-apk\solar-remote-t026-sideload.apk`；SHA256 `901050A738DDF4C163439DEB550A8AEF7C799FBF6EA9483840F6F3E95B3EFDD0`；manifest 已确认无 `testOnly`。
 
 ## Verification Baseline
 
-最近一次 T-022 验证通过：
+最近一次 T-026 验证通过：
 
-- `npm.cmd test -- src/app.test.ts`：25 tests passed
-- `npm.cmd test`：5 files / 46 tests passed
+- `npm.cmd test -- src/app.test.ts`：27 tests passed
+- `npm.cmd test`：5 files / 48 tests passed
 - `npm.cmd run build`：passed
 - `npm.cmd run sync`：passed
-- `$env:JAVA_HOME='C:\Program Files\Android\Android Studio\jbr'; .\gradlew.bat :app:assembleDebug`：BUILD SUCCESSFUL
+- 320/360/390px 本地 Chrome 自动检查：device/profile/scene 无横向溢出，profile 统计 1 行 3 项，profile 场景 1 行 4 项
+- `$env:JAVA_HOME='C:\Program Files\Android\Android Studio\jbr'; .\gradlew.bat :app:assembleDebug --project-prop android.injected.testOnly=false`：BUILD SUCCESSFUL
+- `aapt` manifest check：`NO_TEST_ONLY`
+- `apksigner verify --verbose`：Verifies
 
 如果下一步只做文档，不需要重新跑 npm/Gradle。只要改代码、UI、BLE、协议或 Android，必须重新跑相关测试。
 
 ## Best Next Tasks
 
-优先级建议：
+当前用户口径：`T-001` / `T-002` 先不做，任务保留。
+
+保留任务：
 
 1. `T-001`：补齐 20 次真机扫描/连接性能采样。
    - 任务包：`.agent/tasks/active/T-001-performance-sampling.md`
@@ -84,11 +96,13 @@
 
 ## Open Risks
 
-- T-001 还没有正式 20 次 P50/P90 数据，目前只有用户真机可行性反馈。
-- T-002 还没有逐条 10 次命令复测记录，目前只知道 5 条 MVP 命令可行性良好。
-- 哪些特定指令稳定 notify 仍需真机日志确认；默认不要把普通命令改回等待回包。
-- 开/关命令目前是单一 `0x0A` 控制命令，是否能区分独立开机/关机仍待真机确认。
-- vivo/Android 状态栏渐变效果需要真机视觉确认，代码已尽量做透明 status bar / WebView。
+- T-001 还没有正式 20 次 P50/P90 数据，目前只有用户真机可行性反馈；用户已要求先不做。
+- T-002 还没有逐条 10 次命令复测记录，目前只知道 5 条 MVP 命令可行性良好；用户已要求先不做。
+- 协议回传规则已确认：只有读状态和读参数回传；默认不要把普通命令改回等待回包。
+- 开/关命令目前按 `0x0A` 指令执行，是否能区分独立开机/关机仍待真机确认。
+- vivo/Android 状态栏渐变真机未通过；如需再改，必须先走 Plan First。
+- T-025/T-026 已再试状态栏/底栏安全区和 UI 密度，后续不要继续凭感觉反复改；先真机判断。
+- 详情页顶部已压缩，锚点滚动是否还需改等待用户反馈。
 
 ## Do Not Do
 
