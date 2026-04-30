@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { DeviceController } from "./deviceController";
 import type { CommandDefinition } from "../protocol/commandBuilder";
 import { encodeFrame } from "../protocol/frameCodec";
+import { DEFAULT_TIME_CONTROL_PARAMS } from "../protocol/timeControlParams";
 import type {
   ConnectionState,
   DeviceBrief,
@@ -469,6 +470,40 @@ describe("DeviceController BLE flow", () => {
       "FFCE06000D00003010",
       "FFCE06000E00003011"
     ]);
+  });
+
+  it("reports the complete byte length for time-control whole-frame writes", async () => {
+    const map: GattMap = {
+      services: [
+        {
+          uuid: SERVICE_UUID,
+          characteristics: [
+            { uuid: WRITE_UUID, properties: ["write"] },
+            { uuid: NOTIFY_UUID_FFF2, properties: ["notify"] }
+          ]
+        }
+      ]
+    };
+    const bridge = new MockBleBridge(map);
+    const controller = new DeviceController() as unknown as {
+      ble: MockBleBridge;
+      connectAndPrepare: (id: string) => Promise<GattMap>;
+      writeTimeControlParams: (params: typeof DEFAULT_TIME_CONTROL_PARAMS) => Promise<string>;
+      getLogs: () => { message: string; commandName?: string; payloadHex?: string }[];
+    };
+    controller.ble = bridge;
+    await controller.connectAndPrepare("D1");
+
+    await expect(controller.writeTimeControlParams(DEFAULT_TIME_CONTROL_PARAMS)).resolves.toBe(
+      "sent writeTimeControlParams bytes=29"
+    );
+
+    const writeCall = bridge.calls.find((entry) => entry.includes(":FFCE1A00B10001010C80FF001E02"));
+    expect(writeCall).toBeTruthy();
+    const txLog = controller
+      .getLogs()
+      .find((entry) => entry.commandName === "writeTimeControlParams" && entry.payloadHex?.startsWith("FFCE1A00"));
+    expect(txLog?.message).toContain("bytes=29");
   });
 
   it("cleans pending response after a waited command write fails so retry can wait for notify", async () => {

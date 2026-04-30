@@ -42,7 +42,46 @@
   - Probe APK：`交付物/solar-remote-t031-probe.apk`、`C:\solar-apk\solar-remote-t031-probe.apk`；SHA256 `1B27F2DC25FB55AB0A3831EA7E77A002F6C28127E806C960FD531239DE37F6E2`；报告见 `.agent/reports/2026-04-29-t031-probe-report.md`
   - 验收标准：生成 `solar-remote-t031-probe.apk`；vivo logcat/Web console 能看到 `T031-system-bars-final`；Probe 至少出现系统栏变色、native strip 可见或 visual fallback 生效之一；如果完全没变化，暂停排查 APK/Activity 命中，不继续 CSS 猜测；最终 `solar-remote-t031-sideload.apk` 无黄/洋红/青/绿 Probe 色；T030 左右宽度恢复不回退；BLE、协议、普通命令回包策略和 `deviceController.ts` 不改；`npm.cmd test`、build、sync、assembleDebug、aapt 无 `testOnly`、apksigner verify 通过。
 
-- 当前没有正在实施的已批准任务；T-001/T-002/T-010 保持不动。
+- [x] T-034 时控模式 B1 参数下载接入
+  - 优先级：P0
+  - 状态：Done；已实现类型化 B1 MODE=01 编码/解码与写入链路、时控 UI 提交后整包发送、读参数 B1 MODE=01 回包同步到控件。
+  - 方案：`.agent/plans/2026-04-30-t034-time-control-mode-write.md`
+  - 审批：`.agent/approvals/2026-04-30-t034-time-control-mode-write.md`
+  - 涉及文件：`项目文件/android-mvp-capacitor/src/protocol/timeControlParams.ts`、`项目文件/android-mvp-capacitor/src/protocol/commandBuilder.ts`、`项目文件/android-mvp-capacitor/src/protocol/responseParser.ts`、`项目文件/android-mvp-capacitor/src/device/deviceController.ts`、`项目文件/android-mvp-capacitor/src/app.ts`、`项目文件/android-mvp-capacitor/src/styles.css`、相关测试、`.agent/reports/`
+  - 验收标准：App 通过类型化控件编辑本地时控 draft，每次提交一个参数修改后发送 `B1 MODE=01` 整模式参数包；`LEN=1A`、总长 29 字节、字段顺序、累计时长和校验和正确；滑块拖动过程中不刷屏，松手后发送一次；点击“读参数”后若收到 `B1 MODE=01` 回包，能把整包参数同步到所有对应按键、步进控件、滑块和摘要；现有 5 条 MVP 命令不变；普通控制命令和时控写入均不默认等待回包；UI 不直接解析 HEX；320/360/390px 无横向溢出。
+  - 验证：已先观察 TDD 红灯；`npm.cmd test -- src/app.test.ts src/protocol/timeControlParams.test.ts src/protocol/commandBuilder.test.ts src/protocol/responseParser.test.ts`、`npm.cmd test`、`npm.cmd run build`、`npm.cmd run sync`、Android Studio JBR `gradlew.bat assembleDebug`、APK `aapt` 无 `testOnly`、`apksigner verify`、Chrome 320/360/390px layout smoke 均通过。
+
+- [x] T-035 时控真实帧字段修正与单次完整写入
+  - 优先级：P0
+  - 状态：Done；已按用户确认实施，修正真实帧字段、整包写入策略和读参同步模型。
+  - 方案：`.agent/plans/2026-04-30-t035-time-control-real-frame-corrections.md`
+  - 审批：`.agent/approvals/2026-04-30-t035-time-control-real-frame-corrections.md`
+  - 报告：`.agent/reports/2026-04-30-t035-time-control-real-frame-corrections-report.md`
+  - 输入依据：用户提供 `FF CE 1A 01 B1 00 ... 30 49` 读参数回传帧、`FF CE 1A 00 B1 00 ... 30 1C` 改参发送帧，以及供应商 `MODE=03/LEN=13`、`MODE=01/LEN=1A`、`MODE=02/LEN=22` 三条样例；证明 T034 的时长单位、功率编码和最大 PWM 字段假设需要修正，并确认 `MODE=01` 时控为 29 字节整包写入，`MODE=02` 长帧后续可单独考虑分包。
+  - 涉及文件：`项目文件/android-mvp-capacitor/src/protocol/timeControlParams.ts`、`项目文件/android-mvp-capacitor/src/protocol/commandBuilder.ts`、`项目文件/android-mvp-capacitor/src/protocol/responseParser.ts`、`项目文件/android-mvp-capacitor/src/device/deviceController.ts`、`项目文件/android-mvp-capacitor/src/app.ts`、`项目文件/android-mvp-capacitor/src/styles.css`、`项目文件/android-mvp-capacitor/android/app/src/main/java/com/solar/remote/BleBridgePlugin.java`、相关测试、`.agent/reports/`
+  - 验收标准：时控时长按 5 分钟累计点编码/解码；最大 PWM/最大输出按 16-bit raw 处理；功率按 0~255 缩放百分比编码/解码，覆盖 `CC=80%`、`80≈50%`、`4D≈30%`、`1A≈10%`、`FF=100%`；电池类型标签修正为 `1=磷酸铁锂/2=锂电池/3=铅酸`；每次时控提交只发一次完整 29 字节 `B1 MODE=01` 帧；Android/JS 不对时控做应用层分包并 best-effort 请求 MTU；`MODE=02` 长帧分包不在本次实现；现有 5 条 MVP 命令和普通命令不等回包策略不变；测试、build、sync、Gradle、APK 检查通过。
+  - 验证：TDD 红灯已观察；`npm.cmd test -- src/protocol/timeControlParams.test.ts src/protocol/commandBuilder.test.ts src/protocol/responseParser.test.ts src/device/deviceController.test.ts src/app.test.ts` 5 files / 68 tests 通过；`npm.cmd test` 6 files / 71 tests 通过；`npm.cmd run build`、`npm.cmd run sync`、Android Studio JBR `gradlew.bat assembleDebug`、APK `aapt` 无 `testOnly`、`apksigner verify`、Chrome 320/360/390px 时控布局烟测均通过。
+
+- [x] T-036 时控 UI 模式联动、最大输出百分比与 30 分钟时段档位修正
+  - 优先级：P0
+  - 状态：Done；已按用户确认实施，最大输出和时段模型已改为当前修正版。
+  - 方案：`.agent/plans/2026-04-30-t036-time-control-ui-mode-output-duration-corrections.md`
+  - 审批：`.agent/approvals/2026-04-30-t036-time-control-ui-mode-output-duration-corrections.md`
+  - 报告：`.agent/reports/2026-04-30-t036-time-control-ui-mode-output-duration-corrections-report.md`
+  - 输入依据：用户反馈 T035 效果基本可用，但要求模式条上移、去掉 `参数整包写入`、模式文案与 Live Status 联动、最大输出改为高字节百分比且低字节固定 `00`、时段 1~5 改为 1~15 档且每档 30 分钟。
+  - 涉及文件：`项目文件/android-mvp-capacitor/src/protocol/timeControlParams.ts`、`项目文件/android-mvp-capacitor/src/protocol/timeControlParams.test.ts`、`项目文件/android-mvp-capacitor/src/protocol/commandBuilder.test.ts`、`项目文件/android-mvp-capacitor/src/protocol/responseParser.test.ts`、`项目文件/android-mvp-capacitor/src/app.ts`、`项目文件/android-mvp-capacitor/src/app.test.ts`、`.agent/reports/`
+  - 验收标准：模式条位于时控参数区域上方；去掉 `参数整包写入` 文案；Live Status 和模式条统一显示 `雷达模式/时控模式/平均模式` 并由 `status.mode` 联动；最大输出 UI 显示百分比，写入字段为 `[00~FF, 00]`；时段 1~5 均为 1~15 档、每档 30 分钟、协议累计点按每档 6 写入；普通命令不等回包策略不变；测试、build、sync、Gradle、APK 检查通过。
+  - 验证：TDD 红灯已观察；`npm.cmd test -- src/protocol/timeControlParams.test.ts src/protocol/commandBuilder.test.ts src/protocol/responseParser.test.ts src/app.test.ts` 4 files / 56 tests 通过；`npm.cmd test` 6 files / 72 tests 通过；`npm.cmd run build`、`npm.cmd run sync`、Android Studio JBR `gradlew.bat assembleDebug`、APK `aapt` 无 `testOnly`、`apksigner verify`、Chrome 320/360/390px T036 layout smoke 均通过。未导出 T036 sideload APK，仍以 T033 APK 为最新交付包。
+
+- [ ] T-037 时控交互可视化与消抖发送优化
+  - 优先级：P0
+  - 状态：Proposed；已写方案，等待用户确认后再实施。
+  - 方案：`.agent/plans/2026-04-30-t037-time-control-interaction-visual-debounce.md`
+  - 输入依据：用户要求当前只实现时控时模式条应选中 `时控模式`；强化时段/时长/功率联动 UI；检验并增加按键/滑杆松手后的消抖延迟发送；优化 `当前是时控模式` 与下方 UI 的视觉关联。
+  - 涉及文件：`项目文件/android-mvp-capacitor/src/app.ts`、`项目文件/android-mvp-capacitor/src/styles.css`、`项目文件/android-mvp-capacitor/src/app.test.ts`、`.agent/reports/`
+  - 验收标准：控制面板模式条固定突出 `时控模式`，雷达/平均为未开放只读视觉；Live Status/控制面板出现 `当前是时控模式` 语义并与下方时控卡片关联；时段 tabs、当前时段时长、当前时段功率被一个强化卡片圈起，选中时段与两个滑杆/数值联动明显；时控步进按键和滑杆松手后约 400ms trailing debounce 才发送整包，连续操作只发送最终一次完整 `B1 MODE=01`；普通业务命令不等待回包策略不变；UI 不解析 HEX；测试、build、sync、Gradle、APK 检查和 320/360/390px layout/debounce smoke 通过。
+
+- 当前没有正在实施的已批准任务；T-037 等待确认；T-001/T-002/T-010 保持不动。
 
 - [ ] T-001 补齐 20 次真机性能采样
   - 优先级：P0

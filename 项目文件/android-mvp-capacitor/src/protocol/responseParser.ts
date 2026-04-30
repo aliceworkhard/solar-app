@@ -1,5 +1,6 @@
 import type { DeviceStatus } from "../types";
 import type { DecodedFrame } from "./frameCodec";
+import { decodeTimeControlPayload } from "./timeControlParams";
 
 export interface ParsedResponse {
   command: number;
@@ -9,10 +10,10 @@ export interface ParsedResponse {
 
 function modeFromCode(value: number): string {
   if (value === 1) {
-    return "radar";
+    return "time";
   }
   if (value === 2) {
-    return "time";
+    return "radar";
   }
   if (value === 3) {
     return "average";
@@ -63,7 +64,26 @@ export function parseResponse(frame: DecodedFrame): ParsedResponse {
       };
     }
     case 0xb1: {
-      const mode = modeFromCode(frame.subCommand || payload[0] || 1);
+      const mode = modeFromCode(payload[0] ?? frame.subCommand ?? 1);
+      if (mode === "time") {
+        try {
+          const timeControlParams = decodeTimeControlPayload(payload);
+          return {
+            command: frame.command,
+            summary: `params mode=time bytes=${payload.length}`,
+            statusPatch: {
+              mode,
+              timeControlParams,
+              lastUpdatedAt: Date.now()
+            }
+          };
+        } catch (error) {
+          return {
+            command: frame.command,
+            summary: `params mode=time invalid=${error instanceof Error ? error.message : String(error)} bytes=${payload.length}`
+          };
+        }
+      }
       return {
         command: frame.command,
         summary: `params mode=${mode} bytes=${payload.length}`,

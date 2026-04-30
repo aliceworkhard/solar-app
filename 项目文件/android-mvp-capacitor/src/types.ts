@@ -1,3 +1,5 @@
+import type { TimeControlParams } from "./protocol/timeControlParams";
+
 export type Unsubscribe = () => void;
 
 export type ConnectionState =
@@ -52,6 +54,7 @@ export interface DeviceStatus {
   loadCurrentAmp?: number;
   solarVoltage?: number;
   statusExtraRaw?: number;
+  timeControlParams?: TimeControlParams;
   fwVersion?: string;
   lastUpdatedAt: number;
 }

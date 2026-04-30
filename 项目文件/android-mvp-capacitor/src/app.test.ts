@@ -23,6 +23,7 @@ import {
   SWIPE_DISCONNECT_ACTION_WIDTH_PX,
   SWIPE_DISCONNECT_THRESHOLD_PX,
   TARGET_DEVICE_NAME,
+  TIME_CONTROL_EDITOR_MODEL,
   applyEdgeModeToClassList,
   applySystemInsetsToStyle,
   createLiveStatusModel,
@@ -322,6 +323,21 @@ describe("App UI command model", () => {
     expect(new Set(groupedCommandIds)).toEqual(new Set(BUSINESS_COMMANDS.map((command) => command.id)));
   });
 
+  it("models time-control editing as full-frame sends with read-params synchronization", () => {
+    expect(TIME_CONTROL_EDITOR_MODEL.mode).toBe("time");
+    expect(TIME_CONTROL_EDITOR_MODEL.segmentCount).toBe(5);
+    expect(TIME_CONTROL_EDITOR_MODEL.sendPolicy).toBe("send-full-frame-on-change");
+    expect(TIME_CONTROL_EDITOR_MODEL.sliderCommitPolicy).toBe("send-on-release");
+    expect(TIME_CONTROL_EDITOR_MODEL.syncSourceCommand).toBe("readParams");
+    expect(TIME_CONTROL_EDITOR_MODEL.readParamsSync).toBe("decode-b1-mode-01-into-controls");
+    expect(TIME_CONTROL_EDITOR_MODEL.durationUnitMinutes).toBe(5);
+    expect(TIME_CONTROL_EDITOR_MODEL.powerEncoding).toBe("percent-scaled-0xff");
+    expect(TIME_CONTROL_EDITOR_MODEL.maxOutputModel).toBe("high-byte-percent-low-byte-00");
+    expect(TIME_CONTROL_EDITOR_MODEL.segmentDurationModel).toBe("half-hour-units-1-to-15");
+    expect(TIME_CONTROL_EDITOR_MODEL.modeStripPlacement).toBe("above-time-control-editor");
+    expect(TIME_CONTROL_EDITOR_MODEL.longFramePolicy).toBe("mode-02-future-split");
+  });
+
   it("enables business controls only after the controller reaches ready", () => {
     expect(isControlReady(status("ready"))).toBe(true);
     expect(isControlReady(status("connecting"))).toBe(false);
@@ -457,7 +473,7 @@ describe("App discovery model", () => {
     });
 
     expect(model.caption).toBe("LIVE STATUS");
-    expect(model.modeLabel).toBe("雷达");
+    expect(model.modeLabel).toBe("雷达模式");
     expect(model.batteryType).toBe("磷酸铁锂");
     expect(model.workTime).toBe("27min");
     expect(model.brightness).toBe("85%");
@@ -480,7 +496,7 @@ describe("App discovery model", () => {
     };
 
     expect(createNearbyDeviceMetrics("D1", "D1", connectedStatus)).toEqual({
-      mode: "radar",
+      mode: "雷达模式",
       batteryVoltage: "12.34V",
       solarVoltage: "18.4V",
       power: "56%"

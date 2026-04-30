@@ -1,6 +1,6 @@
 ﻿# AI Context
 
-更新时间：2026-04-29
+更新时间：2026-04-30
 
 ## Project Purpose
 
@@ -38,7 +38,7 @@
 
 ## Current Verification State
 
-- `npm.cmd test`：最近一次通过，5 个测试文件、60 个测试通过。
+- `npm.cmd test`：最近一次通过，6 个测试文件、72 个测试通过。
 - T-003 响应等待策略：5 条 MVP 命令默认不等待回包；显式 `waitForResponse=true` 路径已补单测，写入失败会清理 pending 后重试。
 - T-004 两页业务 UI：主页扫描/快连/连接反馈可见，控制页 5 个 RF 命令一一映射到 `DeviceController`，调试台隐藏保留。
 - T-002 前置接入：App 面向方法已锁定 5 条最小命令集 HEX，并有 `CommandBuilder` 与 `DeviceController` 写入链路测试覆盖。
@@ -46,6 +46,7 @@
 - T-012 读状态可读化：`E1` 回传会解析工作时长、亮度、电池电压、电池电流、太阳能电压；电池 UI 单位为 `V`，电流为 `A`，太阳能电压为 `V`，短包不会更新业务状态。
 - T-001/T-002 可行性冒烟测试：用户使用 vivo X300 Pro 测试，设备连接、发送、接收和 5 条 MVP 命令执行均未发现传输错误；该结论不是完整 20 次/P50/P90 或逐条 10 次验收。
 - `npm.cmd run build`：最近一次通过。
+- `npm.cmd run sync`：最近一次通过。
 - Gradle 终端构建：可用 Android Studio JBR 临时设置 `JAVA_HOME` 后执行 `:app:assembleDebug`；最近一次通过。
 - Android 真机：BLE 已能发送和接收；正式量化采样和命令逐次复测记录仍需后补。
 - 2026-04-28 接手后用户确认：T-001/T-002 先不做，任务保留；协议回传只有读状态和读参数，其他控制命令不用回传；开/关按当前指令执行，能否区分独立开机/关机仍待真机确认；状态栏渐变真机未通过，是否再改等用户后续决定；详情页锚点可能要改但等待用户信息；电流显示规则已通过。
@@ -58,6 +59,9 @@
 - T-031 Final：vivo 真机 Probe 已出现顶部青色、底部绿色，证明 native strip / edge-to-edge 路径可见；最终版固定 `TRANSPARENT_EDGE_WITH_STRIPS`，关闭 `EDGE_PROBE_COLORS`，native top/bottom strip 与 Web/CSS 背景统一为正式浅色，Web 默认 `edge-transparent`；Capacitor `SystemBars.insetsHandling` 继续为 `disable`，由 native 主控；最新正式 APK 为 `交付物/solar-remote-t031-sideload.apk` / `C:\solar-apk\solar-remote-t031-sideload.apk`，SHA256 `2CE79E87FDDCE625B537417A91927046C86E4E4863B61EAF0180C3DE90025F3E`。
 - T-032 UI Header / TabBar Compact Polish：T031 Final 真机已确认系统栏有变化后，按用户反馈去掉标题下方矩形感；header 伪背景层关闭，home 状态提示改为无卡片文字行，`场景` 预留页不再显示空矩形；`设备/场景/我的/具体设备` 标题整体上移；bottom TabBar 继续 `bottom:0` 且内容更贴底；详情锚点默认选中并点亮 `设备状态`，点击 `控制面板` 会切换选中态。BLE、协议、Android native edge-to-edge 和 `deviceController.ts` 未改。最新正式 APK 为 `交付物/solar-remote-t032-sideload.apk` / `C:\solar-apk\solar-remote-t032-sideload.apk`，SHA256 `861A9E929C97F24E51A4D0B6F6ED93E60ABEFF7925290FA8135B8F1D060A82FA`。
 - T-033 Edge Spacing Micro Adjust：在 T032 基础上做 1-2px 级别 UI 间距微调；模拟 top inset 32px 时标题 top 从 34px 上移到 32px；bottom nav padding-bottom 从 20px 收到 18px；320/360px shell 左右 padding 从 10px 放宽到 8px，390px 从 12px 放宽到 10px；仍保持 bottom nav `bottom:0`、无横向溢出、详情页默认点亮 `设备状态`。BLE、协议、Android native edge-to-edge 和 `deviceController.ts` 未改。最新正式 APK 为 `交付物/solar-remote-t033-sideload.apk` / `C:\solar-apk\solar-remote-t033-sideload.apk`，SHA256 `45AD1807CCD71BFFEFC964E7A77AF1E5FDA326AF439E1C17E51F303F6E621A4F`。
+- T-034 Time Control Mode Write：已接入 `B1 MODE=01` 时控模式整包写入；新增 typed `TimeControlParams` 编码/解码，`LEN=1A`、29 字节总帧、5 个时段按累计半小时到达点编码；控制页新增时控编辑区，步进/滑块提交后发送整包，滑块拖动中不刷 BLE；`readParams` 仍不阻塞等待，但若 notify 返回 `B1 MODE=01` 会解析并同步到所有时控控件。现有 5 条 MVP 命令不变，普通命令和时控写入均不默认等待回包，UI 不直接解析 HEX。验证：TDD 红灯已观察，`npm.cmd test` 6 files / 67 tests、build、sync、Android Studio JBR `assembleDebug`、aapt 无 `testOnly`、apksigner、Chrome 320/360/390px layout smoke 均通过。未导出 T034 sideload APK，仍以 T033 APK 为最新交付包。
+- T-035 Time Control Real-Frame Corrections：基于用户真机帧和供应商三条 `B1` 样例修正 `MODE=01` 时控字段；时长改为 5 分钟累计点，功率改为 0-255 缩放百分比，最大输出改为 16-bit raw，电池类型标签改为 `1=磷酸铁锂/2=锂电池/3=铅酸`。`MODE=01` 仍为 29 字节整包一次发送，不做应用层分包；Android native 新增 best-effort `requestMtu(64)` 和 write byte-length 日志；`MODE=02` 37 字节长帧分包留给后续任务。验证：TDD 红灯已观察，`npm.cmd test` 6 files / 71 tests、build、sync、Android Studio JBR `assembleDebug`、aapt 无 `testOnly`、apksigner、Chrome 320/360/390px time-control layout smoke 均通过。未导出 T035 sideload APK，仍以 T033 APK 为最新交付包。
+- T-036 Time Control UI / Percent / Half-hour Corrections：按用户反馈修正 T035 UI 和模型；模式条移动到时控编辑器上方，删除 `参数整包写入` 文案；Live Status、附近设备卡片和模式条统一显示 `雷达模式/时控模式/平均模式`；最大输出改为高字节百分比显示，写入固定为 `[maxOutputByte, 00]`；时段 1~5 改为 1~15 档，每档 30 分钟，协议累计点按每档 6 写入。验证：TDD 红灯已观察，`npm.cmd test` 6 files / 72 tests、build、sync、Android Studio JBR `assembleDebug`、aapt 无 `testOnly`、apksigner、Chrome 320/360/390px T036 layout smoke 均通过。未导出 T036 sideload APK，仍以 T033 APK 为最新交付包。
 
 ## Working Rules
 
@@ -144,7 +148,8 @@
 - T-009 持续发现仍需真机验证补扫间隔、过期时间和进入控制页后的低频保活策略。
 - 协议回传口径已由用户确认：只有读状态和读参数需要关注回传，其他控制命令不用回传；程序默认不等待，仅允许显式标记命令等待。
 - 开/关命令按当前 `0x0A` 指令执行，是否能区分独立开机/关机仍待真机确认。
-- T-033 APK 已生成；下一步安装 `solar-remote-t033-sideload.apk` 真机确认顶部内容更靠上、底部 TabBar 更贴底、左右边距更合适、详情页默认点亮 `设备状态`。
+- T-033 APK 已生成；仍需安装 `solar-remote-t033-sideload.apk` 真机确认顶部内容更靠上、底部 TabBar 更贴底、左右边距更合适、详情页默认点亮 `设备状态`。
+- T-036 需要真机确认修正后的时控参数写入和随后主动点击“读参数”后的 `B1 MODE=01` 回包是否按预期同步到全部控件；特别关注最大输出高字节百分比与低字节固定 `00` 是否符合真实设备语义、时段 1~15 档每档 30 分钟是否与设备显示一致，以及 29 字节整包写入在目标手机/设备上的稳定性。
 - T-028 已重设计控制面板按钮；仍需真机确认 enabled 状态下的视觉观感与误触风险。
 - 详情页锚点已在 T-032 增加默认/切换选中态；真机仍需确认滚动落点和视觉位置是否符合预期。
 - Debug APK 可通过临时设置 Android Studio JBR `JAVA_HOME` 验证；如需全局常规命令仍可后续配置环境变量。

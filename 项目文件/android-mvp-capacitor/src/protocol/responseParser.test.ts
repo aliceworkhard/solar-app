@@ -50,4 +50,77 @@ describe("parseResponse", () => {
     expect(parsed.summary).toContain("params mode=average");
     expect(parsed.statusPatch?.mode).toBe("average");
   });
+
+  it("parses MODE=01 read-params response into time-control parameters for UI synchronization", () => {
+    const parsed = parseResponse({
+      descriptor: 0x01,
+      command: 0xb1,
+      subCommand: 0x00,
+      payload: [
+        0x01,
+        0x01,
+        0x0c,
+        0x80,
+        0x06,
+        0x40,
+        0x37,
+        0x01,
+        0x36,
+        0x4e,
+        0x66,
+        0x7e,
+        0x8a,
+        0xff,
+        0xff,
+        0xff,
+        0xff,
+        0xff,
+        0x88,
+        0xff,
+        0x00
+      ],
+      rawHex: ""
+    });
+
+    expect(parsed.summary).toContain("params mode=time");
+    expect(parsed.statusPatch?.mode).toBe("time");
+    expect(parsed.statusPatch?.timeControlParams?.maxOutputByte).toBe(0x06);
+    expect(parsed.statusPatch?.timeControlParams?.maxOutputLowByte).toBe(0x40);
+    expect(parsed.statusPatch?.timeControlParams?.segments.map((segment) => segment.durationHalfHours)).toEqual([
+      9,
+      4,
+      4,
+      4,
+      2
+    ]);
+    expect(parsed.statusPatch?.timeControlParams?.segments.map((segment) => segment.powerPercent)).toEqual([
+      100,
+      100,
+      100,
+      100,
+      100
+    ]);
+    expect(parsed.statusPatch?.timeControlParams?.morningDurationMinutes).toBe(680);
+  });
+
+  it("links B1 parameter modes into passive status mode updates", () => {
+    expect(
+      parseResponse({
+        descriptor: 0x01,
+        command: 0xb1,
+        subCommand: 0x00,
+        payload: [0x02],
+        rawHex: ""
+      }).statusPatch?.mode
+    ).toBe("radar");
+    expect(
+      parseResponse({
+        descriptor: 0x01,
+        command: 0xb1,
+        subCommand: 0x00,
+        payload: [0x03],
+        rawHex: ""
+      }).statusPatch?.mode
+    ).toBe("average");
+  });
 });

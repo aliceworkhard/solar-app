@@ -1,4 +1,6 @@
 import { encodeFrame } from "./frameCodec";
+import { buildTimeControlPayload } from "./timeControlParams";
+import type { TimeControlParams } from "./timeControlParams";
 
 export type CommandKind = "query" | "control";
 
@@ -18,7 +20,8 @@ const CMD = {
   BRIGHTNESS_UP: 0x0b,
   BRIGHTNESS_DOWN: 0x0c,
   READ_PARAMS: 0x0d,
-  READ_STATUS: 0x0e
+  READ_STATUS: 0x0e,
+  PARAMS_DOWNLOAD: 0xb1
 } as const;
 
 const RESP = {
@@ -79,6 +82,17 @@ export class CommandBuilder {
       kind: "control",
       waitForResponse: false,
       payloadHex: encodeFrame(CMD.BRIGHTNESS_DOWN, 0x00, [0x00]),
+      retryCount: 0,
+      updatesStatus: false
+    };
+  }
+
+  static writeTimeControlParams(params: TimeControlParams): CommandDefinition {
+    return {
+      name: "writeTimeControlParams",
+      kind: "control",
+      waitForResponse: false,
+      payloadHex: encodeFrame(CMD.PARAMS_DOWNLOAD, 0x00, buildTimeControlPayload(params)),
       retryCount: 0,
       updatesStatus: false
     };

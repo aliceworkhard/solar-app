@@ -625,3 +625,97 @@ Key files:
 - `.agent/approvals/2026-04-30-t033-edge-spacing-micro-adjust.md`
 - `.agent/reports/2026-04-30-t033-edge-spacing-report.md`
 - `.agent/reports/2026-04-30-t033-edge-spacing-layout-check.cjs`
+
+## M27 - T-034 time-control B1 parameter write
+
+Date: 2026-04-30
+
+Summary: Implemented the approved time-control mode integration for `B1 MODE=01`, including typed parameter codec, full-frame write command, read-params response parsing, and compact control-panel editor.
+
+Key conclusions:
+- Time-control params now have a typed model instead of UI-side HEX parsing.
+- `CommandBuilder.writeTimeControlParams()` sends a full `B1 MODE=01` parameter frame with `LEN=1A`, 21-byte data payload, and 29 total bytes.
+- Five time segments encode durations as cumulative half-hour arrival points.
+- App UI sends the complete time-control parameter packet on committed edits; sliders commit on `change`, so dragging does not spam BLE writes.
+- `readParams` remains non-blocking; a later `B1 MODE=01` notify is parsed and synced into `DeviceStatus.timeControlParams`, then into all App controls.
+- Existing 5 MVP commands and ordinary-command no-wait behavior were preserved.
+- No T034 release APK was exported; latest delivery APK remains T033 unless a new sideload package is requested.
+
+Related logs:
+- `.agent/logs/2026-04-30-session-02.md`
+
+Key files:
+- `项目文件/android-mvp-capacitor/src/protocol/timeControlParams.ts`
+- `项目文件/android-mvp-capacitor/src/protocol/timeControlParams.test.ts`
+- `项目文件/android-mvp-capacitor/src/protocol/commandBuilder.ts`
+- `项目文件/android-mvp-capacitor/src/protocol/responseParser.ts`
+- `项目文件/android-mvp-capacitor/src/device/deviceController.ts`
+- `项目文件/android-mvp-capacitor/src/types.ts`
+- `项目文件/android-mvp-capacitor/src/app.ts`
+- `项目文件/android-mvp-capacitor/src/styles.css`
+- `项目文件/android-mvp-capacitor/src/app.test.ts`
+- `.agent/plans/2026-04-30-t034-time-control-mode-write.md`
+- `.agent/approvals/2026-04-30-t034-time-control-mode-write.md`
+- `.agent/reports/2026-04-30-t034-time-control-mode-write-report.md`
+
+## M28 - T-035 time-control real-frame corrections
+
+Date: 2026-04-30
+
+Summary: Corrected the `B1 MODE=01` time-control implementation against user real frames and supplier examples, replacing the T034 half-hour/direct-percent assumptions with 5-minute cumulative points, 0-255 scaled powers, and 16-bit raw max output.
+
+Key conclusions:
+- Supplier examples confirm `MODE=01 / LEN=1A` is a 29-byte time-control frame that can be sent as one full packet.
+- Supplier `MODE=02 / LEN=22` is the 37-byte long frame that may need future split handling; T035 does not implement it.
+- Time-control segment durations are cumulative 5-minute points.
+- Power bytes are scaled over 0-255: `CC=80%`, `80≈50%`, `4D≈30%`, `1A≈10%`, `FF=100%`.
+- Max output remains a 16-bit raw value because real frames include `FF00`, `0640`, and `0600`.
+- Android native now requests MTU 64 best-effort after service discovery and logs write byte length; it does not add app-layer splitting for `MODE=01`.
+- Existing five MVP commands and ordinary-command no-wait behavior were preserved.
+- No T035 release APK was exported; latest delivery APK remains T033 unless requested.
+
+Related logs:
+- `.agent/logs/2026-04-30-session-03.md`
+
+Key files:
+- `项目文件/android-mvp-capacitor/src/protocol/timeControlParams.ts`
+- `项目文件/android-mvp-capacitor/src/protocol/timeControlParams.test.ts`
+- `项目文件/android-mvp-capacitor/src/protocol/commandBuilder.test.ts`
+- `项目文件/android-mvp-capacitor/src/protocol/responseParser.test.ts`
+- `项目文件/android-mvp-capacitor/src/device/deviceController.ts`
+- `项目文件/android-mvp-capacitor/src/device/deviceController.test.ts`
+- `项目文件/android-mvp-capacitor/android/app/src/main/java/com/solar/remote/BleBridgePlugin.java`
+- `项目文件/android-mvp-capacitor/src/app.ts`
+- `项目文件/android-mvp-capacitor/src/app.test.ts`
+- `.agent/plans/2026-04-30-t035-time-control-real-frame-corrections.md`
+- `.agent/approvals/2026-04-30-t035-time-control-real-frame-corrections.md`
+- `.agent/reports/2026-04-30-t035-time-control-real-frame-corrections-report.md`
+
+## M29 - T-036 time-control UI / percent / half-hour corrections
+
+Date: 2026-04-30
+
+Summary: Refined the time-control mode after user review by moving the mode strip, linking mode labels, removing the full-frame-write heading, changing max output to high-byte percentage, and changing five segment durations to half-hour units.
+
+Key conclusions:
+- Mode labels now use `雷达模式 / 时控模式 / 平均模式` consistently across Live Status, nearby device metrics, and the read-only mode strip.
+- The mode strip is rendered above the time-control editor; the `参数整包写入` heading was removed.
+- Max output is no longer shown or edited as raw 16-bit UI data. The UI edits `0x00~0xFF`, displays `byte / 2.55` as percent, and writes the protocol bytes as `[maxOutputByte, 00]`.
+- Segment durations are edited as 1~15 half-hour units. The protocol encoder still writes cumulative 5-minute points, so each UI unit contributes 6 points.
+- `readParams` / `B1 MODE=01` sync still flows through typed protocol parsing into App controls; the UI still does not parse HEX directly.
+- Existing five MVP commands and ordinary-command no-wait behavior were preserved.
+- No T036 release APK was exported; latest delivery APK remains T033 unless requested.
+
+Related logs:
+- `.agent/logs/2026-04-30-session-04.md`
+
+Key files:
+- `项目文件/android-mvp-capacitor/src/protocol/timeControlParams.ts`
+- `项目文件/android-mvp-capacitor/src/protocol/timeControlParams.test.ts`
+- `项目文件/android-mvp-capacitor/src/protocol/commandBuilder.test.ts`
+- `项目文件/android-mvp-capacitor/src/protocol/responseParser.test.ts`
+- `项目文件/android-mvp-capacitor/src/app.ts`
+- `项目文件/android-mvp-capacitor/src/app.test.ts`
+- `.agent/plans/2026-04-30-t036-time-control-ui-mode-output-duration-corrections.md`
+- `.agent/approvals/2026-04-30-t036-time-control-ui-mode-output-duration-corrections.md`
+- `.agent/reports/2026-04-30-t036-time-control-ui-mode-output-duration-corrections-report.md`

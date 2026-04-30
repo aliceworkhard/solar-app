@@ -1,4 +1,18 @@
 import { DeviceController } from "./device/deviceController";
+import {
+  DEFAULT_TIME_CONTROL_PARAMS,
+  MAX_TIME_CONTROL_MINUTES,
+  MAX_TOTAL_SEGMENT_HALF_HOURS,
+  TIME_CONTROL_STEP_MINUTES,
+  TIME_CONTROL_SEGMENT_MAX_HALF_HOURS,
+  TIME_CONTROL_SEGMENT_MIN_HALF_HOURS,
+  TIME_CONTROL_SEGMENT_COUNT,
+  applyTimeControlChange,
+  cloneTimeControlParams,
+  maxOutputByteToPercent,
+  type TimeControlChange,
+  type TimeControlParams
+} from "./protocol/timeControlParams";
 import { spacedHex } from "./utils/hex";
 import type { DeviceBrief, DeviceStatus, LogEntry } from "./types";
 
@@ -162,6 +176,20 @@ export const COMMAND_PANEL_GROUPS: CommandPanelGroup[] = [
 ];
 
 export const EDGE_BUILD_ID = "T031-system-bars-final";
+export const TIME_CONTROL_EDITOR_MODEL = {
+  mode: "time",
+  segmentCount: TIME_CONTROL_SEGMENT_COUNT,
+  sendPolicy: "send-full-frame-on-change",
+  sliderCommitPolicy: "send-on-release",
+  syncSourceCommand: "readParams",
+  readParamsSync: "decode-b1-mode-01-into-controls",
+  durationUnitMinutes: TIME_CONTROL_STEP_MINUTES,
+  powerEncoding: "percent-scaled-0xff",
+  maxOutputModel: "high-byte-percent-low-byte-00",
+  segmentDurationModel: "half-hour-units-1-to-15",
+  modeStripPlacement: "above-time-control-editor",
+  longFramePolicy: "mode-02-future-split"
+} as const;
 export const EDGE_MODE_BODY_CLASSES: Record<EdgeMode, string> = {
   transparent: "edge-transparent",
   "color-match": "edge-color-match",
@@ -496,13 +524,13 @@ function formatFixedUnit(value: number | undefined, digits: number, unit: string
 
 function formatModeLabel(mode: string): string {
   if (mode === "radar") {
-    return "雷达";
+    return "雷达模式";
   }
   if (mode === "time") {
-    return "时控";
+    return "时控模式";
   }
   if (mode === "average") {
-    return "平均";
+    return "平均模式";
   }
   return mode || "-";
 }
@@ -537,7 +565,7 @@ export function createNearbyDeviceMetrics(
     };
   }
   return {
-    mode: status.mode || "-",
+    mode: formatModeLabel(status.mode),
     batteryVoltage: formatBatteryVoltage(status),
     solarVoltage: formatSolarVoltage(status),
     power: `${status.power}%`
@@ -691,12 +719,17 @@ export class App {
   private connectOperationSeq = 0;
   private activeConnectOperationId = 0;
   private recentlyDisconnectedDeviceId = "";
+  private timeControlDraft: TimeControlParams;
+  private syncedTimeControlParamsRef?: TimeControlParams;
+  private activeTimeControlSegmentIndex = 0;
 
   constructor(root: HTMLElement, controller: DeviceController) {
     this.root = root;
     this.controller = controller;
     this.status = controller.getStatus();
     this.logs = controller.getLogs();
+    this.timeControlDraft = cloneTimeControlParams(this.status.timeControlParams ?? DEFAULT_TIME_CONTROL_PARAMS);
+    this.syncedTimeControlParamsRef = this.status.timeControlParams;
   }
 
   start(): void {
@@ -705,6 +738,10 @@ export class App {
     this.render();
     this.controller.onStatusChange((status) => {
       this.status = status;
+      if (status.timeControlParams && status.timeControlParams !== this.syncedTimeControlParamsRef) {
+        this.timeControlDraft = cloneTimeControlParams(status.timeControlParams);
+        this.syncedTimeControlParamsRef = status.timeControlParams;
+      }
       this.refreshStatus();
       this.refreshDeviceList();
       this.syncStatusPolling();
@@ -807,12 +844,13 @@ export class App {
                   <span class="write-chip">写入方式：<b id="writeTypeValue">-</b></span>
                 </div>
                 ${this.renderCommandPanel()}
-                <div class="result result-live" id="resultArea" hidden></div>
                 <div class="seg readonly control-mode-strip" id="modeSeg" aria-label="模式展示">
                   <button data-mode="radar" class="seg-btn" type="button">雷达模式</button>
                   <button data-mode="time" class="seg-btn" type="button">时控模式</button>
                   <button data-mode="average" class="seg-btn" type="button">平均模式</button>
                 </div>
+                ${this.renderTimeControlEditor()}
+                <div class="result result-live" id="resultArea" hidden></div>
               </article>
             </div>
           </section>
@@ -1048,6 +1086,112 @@ export class App {
     `;
   }
 
+  private renderTimeControlEditor(): string {
+    const params = this.timeControlDraft;
+    const activeSegment = this.activeTimeControlSegment();
+    const activeMaxDuration = this.maxDurationForActiveTimeSegment();
+    const disabled = this.timeControlDisabledAttr();
+    return `
+      <section class="time-control-card" id="timeControlEditor" aria-label="时控模式参数">
+        <div class="time-control-head">
+          <div>
+            <span class="time-control-eyebrow">时控模式</span>
+          </div>
+          <span class="time-control-state" id="timeControlSyncMeta">读参数回包同步</span>
+        </div>
+
+        <div class="time-control-grid">
+          ${this.renderTimeControlStepper("电池类型", "timeBatteryTypeValue", this.formatTimeControlBatteryType(params.batteryType), "batteryType", 1, disabled)}
+          ${this.renderTimeControlStepper("电池电压", "timeBatteryVoltageValue", this.formatTimeControlVoltage(params.batteryVoltageMv), "batteryVoltageMv", 100, disabled)}
+          ${this.renderTimeControlStepper("光控延时", "timeLightDelayValue", `${params.lightDelaySeconds}s`, "lightDelaySeconds", 5, disabled)}
+          ${this.renderTimeControlStepper("灵敏度", "timeSensitivityValue", this.formatTimeControlSensitivity(params.sensitivity), "sensitivity", 1, disabled)}
+        </div>
+
+        <label class="time-slider-block" for="timeMaxPwmRange">
+          <span>
+            最大输出百分比
+            <b id="timeMaxPwmValue">${this.formatTimeControlMaxOutput(params.maxOutputByte)}</b>
+          </span>
+          <input id="timeMaxPwmRange" data-time-control type="range" min="0" max="255" step="1" value="${params.maxOutputByte}" ${disabled} />
+        </label>
+
+        <div class="time-segment-tabs" aria-label="时控时段">
+          ${params.segments
+            .map(
+              (segment, index) => `
+                <button
+                  class="time-segment-tab ${index === this.activeTimeControlSegmentIndex ? "active" : ""}"
+                  data-time-segment="${index}"
+                  type="button"
+                >
+                  <span>${index + 1}</span>
+                  <b>${this.formatTimeControlHalfHours(segment.durationHalfHours)}</b>
+                </button>
+              `
+            )
+            .join("")}
+        </div>
+
+        <div class="time-control-range-grid">
+          <label class="time-slider-block" for="timeSegmentDurationRange">
+            <span>
+              当前时段时长
+              <b id="timeSegmentDurationValue">${this.formatTimeControlHalfHours(activeSegment.durationHalfHours)}</b>
+            </span>
+            <input id="timeSegmentDurationRange" data-time-control type="range" min="${TIME_CONTROL_SEGMENT_MIN_HALF_HOURS}" max="${activeMaxDuration}" step="1" value="${
+              activeSegment.durationHalfHours
+            }" ${disabled} />
+          </label>
+          <label class="time-slider-block" for="timeSegmentPowerRange">
+            <span>
+              当前时段功率
+              <b id="timeSegmentPowerValue">${activeSegment.powerPercent}%</b>
+            </span>
+            <input id="timeSegmentPowerRange" data-time-control type="range" min="0" max="100" step="5" value="${activeSegment.powerPercent}" ${disabled} />
+          </label>
+          <label class="time-slider-block" for="timeMorningDurationRange">
+            <span>
+              晨亮时长
+              <b id="timeMorningDurationValue">${this.formatTimeControlMinutes(params.morningDurationMinutes)}</b>
+            </span>
+            <input id="timeMorningDurationRange" data-time-control type="range" min="0" max="${MAX_TIME_CONTROL_MINUTES}" step="${TIME_CONTROL_STEP_MINUTES}" value="${params.morningDurationMinutes}" ${disabled} />
+          </label>
+          <label class="time-slider-block" for="timeMorningPowerRange">
+            <span>
+              晨亮功率
+              <b id="timeMorningPowerValue">${params.morningPowerPercent}%</b>
+            </span>
+            <input id="timeMorningPowerRange" data-time-control type="range" min="0" max="100" step="5" value="${params.morningPowerPercent}" ${disabled} />
+          </label>
+        </div>
+
+        <div class="time-control-summary" id="timeSegmentSummary">
+          ${this.renderTimeControlSegmentSummary()}
+        </div>
+      </section>
+    `;
+  }
+
+  private renderTimeControlStepper(
+    label: string,
+    valueId: string,
+    value: string,
+    kind: "batteryType" | "batteryVoltageMv" | "lightDelaySeconds" | "sensitivity",
+    step: number,
+    disabled: string
+  ): string {
+    return `
+      <div class="time-stepper">
+        <span>${label}</span>
+        <div>
+          <button data-time-control data-time-step data-kind="${kind}" data-delta="${-step}" type="button" ${disabled}>-</button>
+          <b id="${valueId}">${value}</b>
+          <button data-time-control data-time-step data-kind="${kind}" data-delta="${step}" type="button" ${disabled}>+</button>
+        </div>
+      </div>
+    `;
+  }
+
   private commandPanelGroup(id: CommandPanelGroupId): CommandPanelGroup {
     const group = COMMAND_PANEL_GROUPS.find((item) => item.id === id);
     if (!group) {
@@ -1113,6 +1257,7 @@ export class App {
         void this.handleAction(command, () => this.controller[command.action]());
       });
     }
+    this.bindTimeControlEvents();
     this.byId("brandTrigger").addEventListener("click", () => this.toggleDebugByTap());
     this.byId("debugCloseBtn").addEventListener("click", () => {
       this.debugVisible = false;
@@ -1129,6 +1274,73 @@ export class App {
         button.classList.add("active");
       }
     });
+  }
+
+  private bindTimeControlEvents(): void {
+    this.root.querySelectorAll<HTMLButtonElement>("[data-time-step]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const change = this.resolveTimeControlStepChange(button.dataset.kind, Number(button.dataset.delta || 0));
+        if (change) {
+          void this.commitTimeControlChange(change);
+        }
+      });
+    });
+
+    this.root.querySelectorAll<HTMLButtonElement>("[data-time-segment]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const index = Number(button.dataset.timeSegment);
+        if (!Number.isInteger(index) || index < 0 || index >= TIME_CONTROL_SEGMENT_COUNT) {
+          return;
+        }
+        this.activeTimeControlSegmentIndex = index;
+        this.refreshTimeControlEditor();
+      });
+    });
+
+    this.bindTimeRange("timeMaxPwmRange", (value) => ({ kind: "maxOutputByte", value }));
+    this.bindTimeRange("timeSegmentDurationRange", (value) => ({
+      kind: "segmentDuration",
+      segmentIndex: this.activeTimeControlSegmentIndex,
+      value
+    }));
+    this.bindTimeRange("timeSegmentPowerRange", (value) => ({
+      kind: "segmentPower",
+      segmentIndex: this.activeTimeControlSegmentIndex,
+      value
+    }));
+    this.bindTimeRange("timeMorningDurationRange", (value) => ({ kind: "morningDuration", value }));
+    this.bindTimeRange("timeMorningPowerRange", (value) => ({ kind: "morningPower", value }));
+  }
+
+  private bindTimeRange(inputId: string, toChange: (value: number) => TimeControlChange): void {
+    const input = this.root.querySelector<HTMLInputElement>(`#${inputId}`);
+    if (!input) {
+      return;
+    }
+    input.addEventListener("input", () => {
+      this.updateTimeControlRangePreview(inputId, Number(input.value));
+    });
+    input.addEventListener("change", () => {
+      void this.commitTimeControlChange(toChange(Number(input.value)));
+    });
+  }
+
+  private resolveTimeControlStepChange(kind: string | undefined, delta: number): TimeControlChange | null {
+    if (!Number.isFinite(delta) || delta === 0) {
+      return null;
+    }
+    switch (kind) {
+      case "batteryType":
+        return { kind, value: this.clampTimeValue(this.timeControlDraft.batteryType + delta, 1, 3) };
+      case "batteryVoltageMv":
+        return { kind, value: this.clampTimeValue(this.timeControlDraft.batteryVoltageMv + delta, 0, 0xffff) };
+      case "lightDelaySeconds":
+        return { kind, value: this.clampTimeValue(this.timeControlDraft.lightDelaySeconds + delta, 5, 60) };
+      case "sensitivity":
+        return { kind, value: this.clampTimeValue(this.timeControlDraft.sensitivity + delta, 1, 4) };
+      default:
+        return null;
+    }
   }
 
   private scheduleInitialDiscovery(): void {
@@ -1475,6 +1687,25 @@ export class App {
     }
   }
 
+  private async commitTimeControlChange(change: TimeControlChange): Promise<void> {
+    if (!isControlReady(this.status)) {
+      this.refreshTimeControlEditor();
+      this.setResult("设备未就绪，时控参数未发送", "error");
+      return;
+    }
+    try {
+      const result = applyTimeControlChange(this.timeControlDraft, change);
+      this.timeControlDraft = result.params;
+      this.refreshTimeControlEditor();
+      this.setResult("时控参数整包发送中...", "pending");
+      const message = await this.controller.writeTimeControlParams(this.timeControlDraft);
+      this.setResult(`时控参数整包已发送：${message}`, "success");
+    } catch (error) {
+      this.refreshTimeControlEditor();
+      this.setResult(`时控参数失败：${this.errorMessage(error)}`, "error");
+    }
+  }
+
   private async handleRawSend(): Promise<void> {
     const hexInput = this.byId("rawHexInput") as HTMLInputElement;
     const writeType = (this.byId("rawWriteType") as HTMLSelectElement).value as "write" | "writeNoResponse";
@@ -1658,6 +1889,183 @@ export class App {
     });
   }
 
+  private refreshTimeControlEditor(): void {
+    if (!this.root.childElementCount) {
+      return;
+    }
+    const params = this.timeControlDraft;
+    const ready = isControlReady(this.status);
+    const activeSegment = this.activeTimeControlSegment();
+    const activeMaxDuration = this.maxDurationForActiveTimeSegment();
+
+    this.setTextIfPresent("timeBatteryTypeValue", this.formatTimeControlBatteryType(params.batteryType));
+    this.setTextIfPresent("timeBatteryVoltageValue", this.formatTimeControlVoltage(params.batteryVoltageMv));
+    this.setTextIfPresent("timeLightDelayValue", `${params.lightDelaySeconds}s`);
+    this.setTextIfPresent("timeSensitivityValue", this.formatTimeControlSensitivity(params.sensitivity));
+    this.setTextIfPresent("timeMaxPwmValue", this.formatTimeControlMaxOutput(params.maxOutputByte));
+    this.setTextIfPresent("timeSegmentDurationValue", this.formatTimeControlHalfHours(activeSegment.durationHalfHours));
+    this.setTextIfPresent("timeSegmentPowerValue", `${activeSegment.powerPercent}%`);
+    this.setTextIfPresent("timeMorningDurationValue", this.formatTimeControlMinutes(params.morningDurationMinutes));
+    this.setTextIfPresent("timeMorningPowerValue", `${params.morningPowerPercent}%`);
+    this.setTextIfPresent(
+      "timeControlSyncMeta",
+      this.status.timeControlParams ? "已按读参数回包同步" : "等待读参数回包"
+    );
+
+    this.setTimeRangeValue("timeMaxPwmRange", params.maxOutputByte);
+    this.setTimeRangeValue("timeSegmentDurationRange", activeSegment.durationHalfHours, activeMaxDuration);
+    this.setTimeRangeValue("timeSegmentPowerRange", activeSegment.powerPercent);
+    this.setTimeRangeValue("timeMorningDurationRange", params.morningDurationMinutes);
+    this.setTimeRangeValue("timeMorningPowerRange", params.morningPowerPercent);
+
+    const summary = this.root.querySelector<HTMLElement>("#timeSegmentSummary");
+    if (summary) {
+      summary.innerHTML = this.renderTimeControlSegmentSummary();
+    }
+
+    this.root.querySelectorAll<HTMLButtonElement>("[data-time-segment]").forEach((button) => {
+      const index = Number(button.dataset.timeSegment);
+      const segment = params.segments[index];
+      button.classList.toggle("active", index === this.activeTimeControlSegmentIndex);
+      if (segment) {
+        const duration = button.querySelector("b");
+        if (duration) {
+          duration.textContent = this.formatTimeControlHalfHours(segment.durationHalfHours);
+        }
+      }
+    });
+
+    this.root.querySelectorAll<HTMLInputElement | HTMLButtonElement>("[data-time-control]").forEach((control) => {
+      control.disabled = !ready;
+    });
+  }
+
+  private setTimeRangeValue(inputId: string, value: number, max?: number): void {
+    const input = this.root.querySelector<HTMLInputElement>(`#${inputId}`);
+    if (!input) {
+      return;
+    }
+    input.value = String(value);
+    if (max != null) {
+      input.max = String(max);
+    }
+  }
+
+  private updateTimeControlRangePreview(inputId: string, value: number): void {
+    if (!Number.isFinite(value)) {
+      return;
+    }
+    if (inputId === "timeMaxPwmRange") {
+      this.setTextIfPresent("timeMaxPwmValue", this.formatTimeControlMaxOutput(value));
+    } else if (inputId === "timeSegmentDurationRange") {
+      this.setTextIfPresent("timeSegmentDurationValue", this.formatTimeControlHalfHours(value));
+    } else if (inputId === "timeSegmentPowerRange") {
+      this.setTextIfPresent("timeSegmentPowerValue", `${value}%`);
+    } else if (inputId === "timeMorningDurationRange") {
+      this.setTextIfPresent("timeMorningDurationValue", this.formatTimeControlMinutes(value));
+    } else if (inputId === "timeMorningPowerRange") {
+      this.setTextIfPresent("timeMorningPowerValue", `${value}%`);
+    }
+  }
+
+  private renderTimeControlSegmentSummary(): string {
+    const total = this.timeControlDraft.segments.reduce((sum, segment) => sum + segment.durationHalfHours, 0);
+    return `
+      ${this.timeControlDraft.segments
+        .map(
+          (segment, index) => `
+            <span>
+              ${index + 1}段
+              <b>${this.formatTimeControlHalfHours(segment.durationHalfHours)} / ${segment.powerPercent}%</b>
+            </span>
+          `
+        )
+        .join("")}
+      <span class="time-control-total">累计 <b id="timeTotalDurationValue">${this.formatTimeControlHalfHours(total)}</b></span>
+    `;
+  }
+
+  private activeTimeControlSegment(): TimeControlParams["segments"][number] {
+    this.activeTimeControlSegmentIndex = this.clampTimeValue(
+      this.activeTimeControlSegmentIndex,
+      0,
+      TIME_CONTROL_SEGMENT_COUNT - 1
+    );
+    return this.timeControlDraft.segments[this.activeTimeControlSegmentIndex] ?? this.timeControlDraft.segments[0];
+  }
+
+  private maxDurationForActiveTimeSegment(): number {
+    const otherDuration = this.timeControlDraft.segments.reduce(
+      (sum, segment, index) => (index === this.activeTimeControlSegmentIndex ? sum : sum + segment.durationHalfHours),
+      0
+    );
+    const available = Math.max(TIME_CONTROL_SEGMENT_MIN_HALF_HOURS, MAX_TOTAL_SEGMENT_HALF_HOURS - otherDuration);
+    return Math.min(TIME_CONTROL_SEGMENT_MAX_HALF_HOURS, available);
+  }
+
+  private timeControlDisabledAttr(): string {
+    return isControlReady(this.status) ? "" : "disabled";
+  }
+
+  private clampTimeValue(value: number, min: number, max: number): number {
+    if (!Number.isFinite(value)) {
+      return min;
+    }
+    return Math.min(max, Math.max(min, Math.round(value)));
+  }
+
+  private formatTimeControlMinutes(value: number): string {
+    const safeValue = Number.isFinite(value) ? Math.max(0, Math.round(value)) : 0;
+    const hours = Math.floor(safeValue / 60);
+    const minutes = safeValue % 60;
+    if (!hours) {
+      return `${minutes}min`;
+    }
+    return minutes ? `${hours}h${minutes}m` : `${hours}h`;
+  }
+
+  private formatTimeControlHalfHours(value: number): string {
+    const units = this.clampTimeValue(value, 0, MAX_TOTAL_SEGMENT_HALF_HOURS);
+    const minutes = units * 30;
+    return `${units}档 / ${this.formatTimeControlMinutes(minutes)}`;
+  }
+
+  private formatTimeControlMaxOutput(value: number): string {
+    const raw = this.clampTimeValue(value, 0, 0xff);
+    const percent = maxOutputByteToPercent(raw);
+    return `${percent % 1 === 0 ? percent.toFixed(0) : percent.toFixed(1)}%`;
+  }
+
+  private formatTimeControlBatteryType(value: number): string {
+    const labels: Record<number, string> = {
+      1: "磷酸铁锂",
+      2: "锂电池",
+      3: "铅酸"
+    };
+    return labels[value] ?? `类型${value}`;
+  }
+
+  private formatTimeControlVoltage(value: number): string {
+    return `${(value / 1000).toFixed(1)}V`;
+  }
+
+  private formatTimeControlSensitivity(value: number): string {
+    const labels: Record<number, string> = {
+      1: "高",
+      2: "中",
+      3: "低",
+      4: "远程"
+    };
+    return labels[value] ?? `${value}档`;
+  }
+
+  private setTextIfPresent(id: string, text: string): void {
+    const node = this.root.querySelector<HTMLElement>(`#${id}`);
+    if (node) {
+      node.textContent = text;
+    }
+  }
+
   private refreshStatus(): void {
     if (!this.root.childElementCount) {
       return;
@@ -1696,6 +2104,7 @@ export class App {
     for (const id of controlButtons) {
       (this.byId(id) as HTMLButtonElement).disabled = !ready;
     }
+    this.refreshTimeControlEditor();
     this.refreshScanControls();
   }
 

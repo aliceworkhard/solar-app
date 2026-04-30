@@ -3,6 +3,7 @@ import { CommandBuilder } from "../protocol/commandBuilder";
 import type { CommandDefinition } from "../protocol/commandBuilder";
 import { FrameDecoder } from "../protocol/frameCodec";
 import { parseResponse } from "../protocol/responseParser";
+import type { TimeControlParams } from "../protocol/timeControlParams";
 import { normalizeHex, spacedHex } from "../utils/hex";
 import type {
   ConnectionState,
@@ -271,6 +272,10 @@ export class DeviceController {
     return this.dispatchCommand(CommandBuilder.brightnessDown());
   }
 
+  async writeTimeControlParams(params: TimeControlParams): Promise<string> {
+    return this.dispatchCommand(CommandBuilder.writeTimeControlParams(params));
+  }
+
   async setParam(paramId: string, value: number): Promise<string> {
     this.addLog("warn", `Single-param write is not defined by protocol yet. paramId=${paramId} value=${value}`);
     throw new Error("协议未定义单参数设置；需后续实现 B1 整包参数下载。");
@@ -417,7 +422,8 @@ export class DeviceController {
 
   private async sendWithoutWait(command: CommandDefinition): Promise<string> {
     this.ensureReadyForTx();
-    this.addLog("tx", spacedHex(command.payloadHex), {
+    const byteLength = command.payloadHex.length / 2;
+    this.addLog("tx", `${spacedHex(command.payloadHex)} bytes=${byteLength}`, {
       direction: "tx",
       commandName: command.name,
       payloadHex: command.payloadHex,
@@ -425,7 +431,7 @@ export class DeviceController {
       result: "sent"
     });
     await this.ble.write(this.currentDeviceId, this.currentWriteUUID, command.payloadHex, this.currentWriteType);
-    const summary = `sent ${command.name}`;
+    const summary = `sent ${command.name} bytes=${byteLength}`;
     this.addLog("info", summary, {
       commandName: command.name,
       payloadHex: command.payloadHex,

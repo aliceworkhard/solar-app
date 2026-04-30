@@ -18,6 +18,7 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.text.TextUtils;
+import android.util.Log;
 
 import androidx.annotation.NonNull;
 
@@ -47,12 +48,15 @@ import java.util.UUID;
     }
 )
 public class BleBridgePlugin extends Plugin {
+    private static final String TAG = "BleBridgePlugin";
     private static final UUID CLIENT_CONFIG_UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb");
     private static final int MIN_SCAN_WINDOW_MS = 600;
     private static final int DEFAULT_SCAN_QUICK_MS = 1500;
     private static final int DEFAULT_SCAN_FULL_MS = 4200;
     private static final int DEFAULT_CONNECT_TIMEOUT_MS = 3200;
     private static final int DEFAULT_DISCOVER_TIMEOUT_MS = 1800;
+    private static final int DEFAULT_ATT_MTU = 23;
+    private static final int PREFERRED_MTU = 64;
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Map<String, ScanResult> scanResults = new LinkedHashMap<>();
@@ -71,6 +75,7 @@ public class BleBridgePlugin extends Plugin {
     private String connectedDeviceId = "";
     private int connectTimeoutMs = DEFAULT_CONNECT_TIMEOUT_MS;
     private int discoverTimeoutMs = DEFAULT_DISCOVER_TIMEOUT_MS;
+    private int negotiatedMtu = DEFAULT_ATT_MTU;
 
     private PluginCall activeScanCall;
     private PluginCall connectCall;
@@ -120,6 +125,7 @@ public class BleBridgePlugin extends Plugin {
                 return;
             }
             if (status == BluetoothGatt.GATT_SUCCESS) {
+                requestPreferredMtu(gatt);
                 connectCall.resolve();
                 emitConnectionState("connected", null);
             } else {
@@ -164,6 +170,16 @@ public class BleBridgePlugin extends Plugin {
                 writeCall.reject("Write failed: " + statusMessage(status));
             }
             writeCall = null;
+        }
+
+        @Override
+        public void onMtuChanged(@NonNull BluetoothGatt gatt, int mtu, int status) {
+            if (status == BluetoothGatt.GATT_SUCCESS) {
+                negotiatedMtu = mtu;
+                Log.i(TAG, "MTU changed mtu=" + mtu);
+                return;
+            }
+            Log.i(TAG, "MTU request failed status=" + statusMessage(status));
         }
     };
 
@@ -357,6 +373,7 @@ public class BleBridgePlugin extends Plugin {
                 : BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
         );
         characteristic.setValue(value);
+        Log.i(TAG, "write bytes=" + value.length + " type=" + writeType + " mtu=" + negotiatedMtu);
         if (!noResponse) {
             writeCall = call;
         }
@@ -622,6 +639,19 @@ public class BleBridgePlugin extends Plugin {
         notifyListeners("connectionState", payload);
     }
 
+    private void requestPreferredMtu(@NonNull BluetoothGatt gatt) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) {
+            Log.i(TAG, "requestMtu skipped below API 21");
+            return;
+        }
+        try {
+            boolean requested = gatt.requestMtu(PREFERRED_MTU);
+            Log.i(TAG, "requestMtu preferred=" + PREFERRED_MTU + " requested=" + requested);
+        } catch (RuntimeException error) {
+            Log.i(TAG, "requestMtu failed: " + error.getMessage());
+        }
+    }
+
     private void ensureAdapter() {
         if (bluetoothAdapter != null) {
             return;
@@ -732,6 +762,7 @@ public class BleBridgePlugin extends Plugin {
     private void cleanupGatt() {
         clearConnectTimeout();
         clearDiscoverTimeout();
+        negotiatedMtu = DEFAULT_ATT_MTU;
         if (bluetoothGatt != null) {
             bluetoothGatt.close();
             bluetoothGatt = null;
