@@ -1,0 +1,62 @@
+[
+  {
+    "width": 320,
+    "height": 900,
+    "scrollWidth": 320,
+    "edgeBuildId": "T031-system-bars-final",
+    "datasetEdgeBuild": "T031-system-bars-final",
+    "bodyClasses": [
+      "edge-visual-fallback"
+    ],
+    "diagnosticBackground": "rgba(90, 170, 255, 0.22)",
+    "nativeTop": "32px",
+    "nativeBottom": "24px",
+    "contentSafeLeft": "0px",
+    "contentSafeRight": "0px",
+    "shellPaddingLeft": "10px",
+    "shellPaddingRight": "10px",
+    "headerTitleTop": 30,
+    "navBottom": 900,
+    "activeItemBottom": 877
+  },
+  {
+    "width": 360,
+    "height": 900,
+    "scrollWidth": 360,
+    "edgeBuildId": "T031-system-bars-final",
+    "datasetEdgeBuild": "T031-system-bars-final",
+    "bodyClasses": [
+      "edge-visual-fallback"
+    ],
+    "diagnosticBackground": "rgba(90, 170, 255, 0.22)",
+    "nativeTop": "32px",
+    "nativeBottom": "24px",
+    "contentSafeLeft": "0px",
+    "contentSafeRight": "0px",
+    "shellPaddingLeft": "10px",
+    "shellPaddingRight": "10px",
+    "headerTitleTop": 30,
+    "navBottom": 900,
+    "activeItemBottom": 877
+  },
+  {
+    "width": 390,
+    "height": 900,
+    "scrollWidth": 390,
+    "edgeBuildId": "T031-system-bars-final",
+    "datasetEdgeBuild": "T031-system-bars-final",
+    "bodyClasses": [
+      "edge-visual-fallback"
+    ],
+    "diagnosticBackground": "rgba(90, 170, 255, 0.22)",
+    "nativeTop": "32px",
+    "nativeBottom": "24px",
+    "contentSafeLeft": "0px",
+    "contentSafeRight": "0px",
+    "shellPaddingLeft": "12px",
+    "shellPaddingRight": "12px",
+    "headerTitleTop": 30,
+    "navBottom": 900,
+    "activeItemBottom": 877
+  }
+]

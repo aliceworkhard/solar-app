@@ -1,0 +1,74 @@
+[
+  {
+    "width": 320,
+    "height": 900,
+    "scrollWidth": 320,
+    "edgeBuildId": "T031-system-bars-final",
+    "bodyClasses": [
+      "edge-transparent"
+    ],
+    "headerBeforeDisplay": "none",
+    "headerMinHeight": "70px",
+    "titleText": "设备",
+    "titleTop": 34,
+    "titleBottom": 66.234375,
+    "navBottom": 900,
+    "navPaddingBottom": "20px",
+    "activeItemBottom": 880,
+    "feedbackBackground": "rgba(0, 0, 0, 0)",
+    "feedbackBorderTopWidth": "0px",
+    "shellPaddingLeft": "10px",
+    "shellPaddingRight": "10px",
+    "defaultStatusActive": true,
+    "defaultControlsInactive": true,
+    "controlsActiveAfterClick": true
+  },
+  {
+    "width": 360,
+    "height": 900,
+    "scrollWidth": 360,
+    "edgeBuildId": "T031-system-bars-final",
+    "bodyClasses": [
+      "edge-transparent"
+    ],
+    "headerBeforeDisplay": "none",
+    "headerMinHeight": "70px",
+    "titleText": "设备",
+    "titleTop": 34,
+    "titleBottom": 66.234375,
+    "navBottom": 900,
+    "navPaddingBottom": "20px",
+    "activeItemBottom": 880,
+    "feedbackBackground": "rgba(0, 0, 0, 0)",
+    "feedbackBorderTopWidth": "0px",
+    "shellPaddingLeft": "10px",
+    "shellPaddingRight": "10px",
+    "defaultStatusActive": true,
+    "defaultControlsInactive": true,
+    "controlsActiveAfterClick": true
+  },
+  {
+    "width": 390,
+    "height": 900,
+    "scrollWidth": 390,
+    "edgeBuildId": "T031-system-bars-final",
+    "bodyClasses": [
+      "edge-transparent"
+    ],
+    "headerBeforeDisplay": "none",
+    "headerMinHeight": "70px",
+    "titleText": "设备",
+    "titleTop": 34,
+    "titleBottom": 66.234375,
+    "navBottom": 900,
+    "navPaddingBottom": "20px",
+    "activeItemBottom": 880,
+    "feedbackBackground": "rgba(0, 0, 0, 0)",
+    "feedbackBorderTopWidth": "0px",
+    "shellPaddingLeft": "12px",
+    "shellPaddingRight": "12px",
+    "defaultStatusActive": true,
+    "defaultControlsInactive": true,
+    "controlsActiveAfterClick": true
+  }
+]

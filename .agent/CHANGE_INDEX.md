@@ -405,3 +405,223 @@ Key files:
 - `.agent/plans/2026-04-28-t026-profile-density-safe-nav.md`
 - `.agent/approvals/2026-04-28-t026-profile-density-safe-nav.md`
 - `.agent/reports/2026-04-28-t026-layout-check.cjs`
+
+## M19 - T-027 Android edge-to-edge insets
+
+Date: 2026-04-29
+
+Summary: Replaced the previous system-bar treatment with AndroidX edge-to-edge and real `WindowInsetsCompat` propagation into the WebView, then moved Web layout inset handling from root shell padding to header, main content, and bottom tab bar.
+
+Key conclusions:
+- The old implementation mixed manual system-bar colors, `setDecorFitsSystemWindows(false)`, and legacy `SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN/HIDE_NAVIGATION`, which is not robust for Android 10 through Android 15 targetSdk 35+.
+- `MainActivity` now uses `WindowCompat.enableEdgeToEdge(window)`, `WindowInsetsControllerCompat`, Android Q+ contrast enforcement disablement, and a WebView `OnApplyWindowInsetsListener`.
+- The WebView listener returns the original insets instead of `WindowInsetsCompat.CONSUMED`.
+- CSS variables `--system-top/right/bottom/left` are injected from native insets, with Web fallback support for browser tests.
+- `.shell` no longer uses root top/bottom inset padding. Header consumes top inset; bottom nav consumes bottom inset while its background reaches the viewport bottom; `main` receives content bottom spacing.
+- BLE native behavior, protocol HEX, normal-command response waiting, and `deviceController.ts` were not changed.
+- A non-`testOnly` sideload APK was exported and signature/manifest checks passed.
+
+Related logs:
+- `.agent/logs/2026-04-29-session-14.md`
+
+Key files:
+- `项目文件/android-mvp-capacitor/android/app/src/main/java/com/solar/remote/MainActivity.java`
+- `项目文件/android-mvp-capacitor/android/app/src/main/res/values/styles.xml`
+- `项目文件/android-mvp-capacitor/android/app/build.gradle`
+- `项目文件/android-mvp-capacitor/src/app.ts`
+- `项目文件/android-mvp-capacitor/src/styles.css`
+- `项目文件/android-mvp-capacitor/src/app.test.ts`
+- `.agent/plans/2026-04-29-t027-android-edge-to-edge-insets.md`
+- `.agent/approvals/2026-04-29-t027-android-edge-to-edge-insets.md`
+- `.agent/reports/2026-04-29-t027-edge-to-edge-layout-check.cjs`
+
+## M20 - T-028 control panel command button redesign
+
+Date: 2026-04-29
+
+Summary: Redesigned the control-panel command buttons so manual operation focuses on `开/关` and brightness adjustment, while `读状态 / 读参数` are retained as low-priority system-read reserved tools.
+
+Key conclusions:
+- The five command ids/actions remain unchanged, preserving the existing `DeviceController` click path.
+- `开/关` remains the current `0x0A` toggle command and is not presented as separate on/off controls.
+- `读状态 / 读参数` stay available for future validation but are no longer visually promoted as daily manual actions.
+- BLE native behavior, protocol HEX, normal-command response waiting, Android native files, and `deviceController.ts` were not changed.
+- 320/360/390px Chrome CDP checks passed with command order `powerToggleBtn > brightnessDownBtn > brightnessUpBtn > readStatusBtn > readParamsBtn`.
+- A non-`testOnly` sideload APK was exported and signature/manifest checks passed.
+
+Related logs:
+- `.agent/logs/2026-04-29-session-15.md`
+
+Key files:
+- `项目文件/android-mvp-capacitor/src/app.ts`
+- `项目文件/android-mvp-capacitor/src/styles.css`
+- `项目文件/android-mvp-capacitor/src/app.test.ts`
+- `.agent/plans/2026-04-29-t028-control-panel-command-buttons.md`
+- `.agent/approvals/2026-04-29-t028-control-panel-command-buttons.md`
+- `.agent/reports/2026-04-29-t028-command-panel-layout-check.cjs`
+
+## M21 - T-029 vivo / Capacitor edge-to-edge hardening
+
+Date: 2026-04-29
+
+Summary: Hardened Android/Capacitor WebView edge-to-edge handling after vivo black-bar feedback and `docs/try.md`, adding native non-black backgrounds, native top/bottom paint fallback views, DecorView-based inset distribution, CSS-pixel inset injection, Capacitor SystemBars config, and Web `--edge-*` inset variables.
+
+Key conclusions:
+- The remaining vivo black-bar risk is multi-layer, not only `statusBarColor/navigationBarColor`.
+- `MainActivity` now treats window/decor/content/WebView backgrounds plus native top/bottom paint fallback as part of the system-bar rendering chain.
+- Insets are collected from DecorView using `systemBars/displayCutout/systemGestures/tappableElement`, returned unconsumed, and passed to Web as CSS px strings.
+- Web code writes both `--native-inset-*` and legacy `--system-*`; CSS combines native and safe-area variables into `--edge-*` for header, bottom nav, scroll margin, and main spacing.
+- BLE native behavior, protocol HEX, normal-command response waiting, and `deviceController.ts` were not changed.
+- A non-`testOnly` sideload APK was exported and signature/manifest checks passed.
+
+Related logs:
+- `.agent/logs/2026-04-29-session-16.md`
+
+Key files:
+- `项目文件/android-mvp-capacitor/android/app/src/main/java/com/solar/remote/MainActivity.java`
+- `项目文件/android-mvp-capacitor/android/app/src/main/res/values/styles.xml`
+- `项目文件/android-mvp-capacitor/capacitor.config.ts`
+- `项目文件/android-mvp-capacitor/src/app.ts`
+- `项目文件/android-mvp-capacitor/src/styles.css`
+- `项目文件/android-mvp-capacitor/src/app.test.ts`
+- `.agent/plans/2026-04-29-t029-vivo-capacitor-edge-hardening.md`
+- `.agent/approvals/2026-04-29-t029-vivo-capacitor-edge-hardening.md`
+- `.agent/reports/2026-04-29-t029-edge-hardening-layout-check.cjs`
+
+## M22 - T-030 edge-to-edge supplemental hardening
+
+Date: 2026-04-29
+
+Summary: Completed the supplemental Android/Capacitor edge-to-edge pass requested after T-029, including Capacitor v8 SystemBars version confirmation, removal of the WebView no-op insets listener, raw native px metadata with width-ratio fallback, debug-only diagnostic color switch defaulted off, and restoration of the main content horizontal width.
+
+Key conclusions:
+- The project uses `@capacitor/core@8.3.1`, `@capacitor/android@8.3.1`, and `@capacitor/cli@8.3.1`, so the `SystemBars` config remains valid.
+- Capacitor SystemBars installs its own listener on the WebView parent; app code now listens on DecorView only and no longer installs a listener on WebView itself.
+- Native top/bottom paint fallback is behind the content frame, paints only inset-height system bar areas, and remains non-clickable, non-focusable, and hidden from accessibility.
+- Native insets now pass raw px, density, WebView width, and separate `contentLeft/contentRight` safe values to Web. Ordinary side gesture insets no longer shrink `.shell`; only explicit horizontal content-safe insets can add left/right padding.
+- CSS `--edge-*` now uses `max(native, system, safe-area, env)` and bottom nav stays `bottom:0`.
+- Local 320/360/390px Chrome checks confirm no horizontal overflow, bottom nav reaches viewport bottom, tab content avoids bottom inset, diagnostic color is off, and ratio fallback works.
+- BLE native behavior, protocol HEX, normal-command response waiting, and `deviceController.ts` were not changed.
+- A non-`testOnly` sideload APK was exported and signature/manifest checks passed.
+
+Related logs:
+- `.agent/logs/2026-04-29-session-17.md`
+
+Key files:
+- `项目文件/android-mvp-capacitor/android/app/src/main/java/com/solar/remote/MainActivity.java`
+- `项目文件/android-mvp-capacitor/src/app.ts`
+- `项目文件/android-mvp-capacitor/src/styles.css`
+- `项目文件/android-mvp-capacitor/src/app.test.ts`
+- `.agent/plans/2026-04-29-t030-edge-to-edge-supplemental-hardening.md`
+- `.agent/approvals/2026-04-29-t030-edge-to-edge-supplemental-hardening.md`
+- `.agent/reports/2026-04-29-t030-edge-supplemental-layout-check.cjs`
+
+## M23 - T-031 system bars probe
+
+Date: 2026-04-29
+
+Summary: Built a final Android system-bars Probe APK to prove whether vivo can be controlled through Activity system-bar color APIs, transparent edge-to-edge drawing, or neither before choosing the final visual fallback.
+
+Key conclusions:
+- The Probe build identity is `T031-system-bars-final`, published through native `Log.d("EdgeT031", ...)`, `window.__edgeBuildId`, and `document.documentElement.dataset.edgeBuild`.
+- Debug-only probe colors are enabled in the Probe APK: status bar yellow, navigation bar magenta, top foreground strip cyan, bottom foreground strip green, and Web diagnostic overlay light blue.
+- T031 intentionally disables Capacitor `SystemBars.insetsHandling` during the probe stage so native owns the system-bar control path.
+- Final strategy is not fixed until vivo returns one of the A/B/C/D probe outcomes: `COLOR_MATCH_SAFE`, `TRANSPARENT_EDGE`, `VISUAL_FALLBACK`, or APK/Activity not hit.
+- BLE native behavior, protocol HEX, normal-command response waiting, and `deviceController.ts` were not changed.
+- Probe APK verification passed: focused tests, full tests, build, sync, Gradle assembleDebug without `testOnly`, `aapt` manifest check, and `apksigner verify`.
+
+Related logs:
+- `.agent/logs/2026-04-29-session-18.md`
+
+Key files:
+- `项目文件/android-mvp-capacitor/android/app/src/main/java/com/solar/remote/MainActivity.java`
+- `项目文件/android-mvp-capacitor/android/app/src/main/res/values/styles.xml`
+- `项目文件/android-mvp-capacitor/capacitor.config.ts`
+- `项目文件/android-mvp-capacitor/src/app.ts`
+- `项目文件/android-mvp-capacitor/src/styles.css`
+- `项目文件/android-mvp-capacitor/src/app.test.ts`
+- `.agent/plans/2026-04-29-t031-final-system-bars-probe.md`
+- `.agent/approvals/2026-04-29-t031-final-system-bars-probe.md`
+- `.agent/reports/2026-04-29-t031-probe-report.md`
+- `.agent/reports/2026-04-29-t031-probe-layout-check.cjs`
+
+## M24 - T-031 final edge color cleanup
+
+Date: 2026-04-29
+
+Summary: Converted the successful T031 Probe result into a final light edge-to-edge build by keeping the visible native strip path, disabling Probe colors, and matching native/Web backgrounds.
+
+Key conclusions:
+- vivo Probe showed cyan top strip and green bottom strip, proving `TRANSPARENT_EDGE_WITH_STRIPS` is the correct final path for this device family.
+- `EDGE_PROBE_COLORS` is now false. Final APK should not show yellow, magenta, cyan, green, or the Web diagnostic overlay.
+- Native status/nav color fallbacks, top/bottom strips, window/decor/content/WebView backgrounds, and Web/CSS page backgrounds now use coordinated light colors.
+- Web default edge mode is `edge-transparent`; `SystemBars.insetsHandling = "disable"` remains in place so native owns this path.
+- BLE native behavior, protocol HEX, normal-command response waiting, and `deviceController.ts` were not changed.
+- A non-`testOnly` sideload APK was exported and signature/manifest checks passed.
+
+Related logs:
+- `.agent/logs/2026-04-29-session-19.md`
+
+Key files:
+- `项目文件/android-mvp-capacitor/android/app/src/main/java/com/solar/remote/MainActivity.java`
+- `项目文件/android-mvp-capacitor/android/app/src/main/res/values/styles.xml`
+- `项目文件/android-mvp-capacitor/src/app.ts`
+- `项目文件/android-mvp-capacitor/src/styles.css`
+- `项目文件/android-mvp-capacitor/src/app.test.ts`
+- `.agent/plans/2026-04-29-t031-final-edge-color-cleanup.md`
+- `.agent/approvals/2026-04-29-t031-final-edge-color-cleanup.md`
+- `.agent/reports/2026-04-29-t031-final-report.md`
+- `.agent/reports/2026-04-29-t031-final-layout-check.cjs`
+
+## M25 - T-032 UI header / tabbar compact polish
+
+Date: 2026-04-29
+
+Summary: Completed the approved final UI compacting pass after T031 Final, removing title-area rectangle artifacts, moving headers upward, moving bottom TabBar content closer to the bottom, and adding explicit detail-anchor active state.
+
+Key conclusions:
+- The user-confirmed system-bar path from T031 was preserved; this pass did not change Android native edge-to-edge code.
+- `.app-header::before` is disabled so page titles no longer sit over a separate rectangular header layer.
+- Home feedback is no longer a card; it renders as a compact text-only status line. The scene reserved page no longer shows an empty rectangle.
+- `设备 / 场景 / 我的 / 具体设备` headers were compacted upward while still respecting `--edge-top`.
+- Bottom TabBar remains fixed at `bottom:0`; content padding was tightened so it appears closer to the bottom while still avoiding the simulated bottom inset.
+- Detail anchors now default to `设备状态` active. Clicking `控制面板` switches the active style and scrolls to the control panel section.
+- BLE native behavior, protocol HEX, normal-command response waiting, Android native edge-to-edge code, and `deviceController.ts` were not changed.
+- A non-`testOnly` sideload APK was exported and signature/manifest checks passed.
+
+Related logs:
+- `.agent/logs/2026-04-29-session-20.md`
+
+Key files:
+- `项目文件/android-mvp-capacitor/src/app.ts`
+- `项目文件/android-mvp-capacitor/src/styles.css`
+- `项目文件/android-mvp-capacitor/src/app.test.ts`
+- `.agent/plans/2026-04-29-t032-ui-header-tabbar-compact-polish.md`
+- `.agent/approvals/2026-04-29-t032-ui-header-tabbar-compact-polish.md`
+- `.agent/reports/2026-04-29-t032-ui-compact-report.md`
+- `.agent/reports/2026-04-29-t032-ui-compact-layout-check.cjs`
+
+## M26 - T-033 edge spacing micro adjust
+
+Date: 2026-04-30
+
+Summary: Completed a small spacing-only UI pass after T032, moving top content slightly upward, bottom TabBar content slightly downward, and widening the content area by reducing side padding.
+
+Key conclusions:
+- This pass intentionally changed only CSS spacing and layout verification files.
+- With simulated top inset 32px, title top moved from T032 `34px` to T033 `32px`.
+- With simulated bottom inset 24px, bottom nav padding-bottom moved from T032 `20px` to T033 `18px`.
+- Horizontal shell padding moved from T032 `10px` to `8px` on 320/360px, and from `12px` to `10px` on 390px.
+- Bottom nav remains `bottom:0`, header pseudo rectangle remains disabled, and detail page still defaults to active `设备状态`.
+- BLE native behavior, protocol HEX, normal-command response waiting, Android native edge-to-edge code, and `deviceController.ts` were not changed.
+- A non-`testOnly` sideload APK was exported and signature/manifest checks passed.
+
+Related logs:
+- `.agent/logs/2026-04-30-session-01.md`
+
+Key files:
+- `项目文件/android-mvp-capacitor/src/styles.css`
+- `.agent/plans/2026-04-30-t033-edge-spacing-micro-adjust.md`
+- `.agent/approvals/2026-04-30-t033-edge-spacing-micro-adjust.md`
+- `.agent/reports/2026-04-30-t033-edge-spacing-report.md`
+- `.agent/reports/2026-04-30-t033-edge-spacing-layout-check.cjs`

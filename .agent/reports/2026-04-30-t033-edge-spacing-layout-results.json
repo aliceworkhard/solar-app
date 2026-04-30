@@ -1,0 +1,47 @@
+[
+  {
+    "width": 320,
+    "height": 900,
+    "scrollWidth": 320,
+    "edgeBuildId": "T031-system-bars-final",
+    "headerBeforeDisplay": "none",
+    "titleTop": 32,
+    "navBottom": 900,
+    "navPaddingBottom": "18px",
+    "activeItemBottom": 882,
+    "shellPaddingLeft": "8px",
+    "shellPaddingRight": "8px",
+    "defaultStatusActive": true,
+    "controlsInactive": true
+  },
+  {
+    "width": 360,
+    "height": 900,
+    "scrollWidth": 360,
+    "edgeBuildId": "T031-system-bars-final",
+    "headerBeforeDisplay": "none",
+    "titleTop": 32,
+    "navBottom": 900,
+    "navPaddingBottom": "18px",
+    "activeItemBottom": 882,
+    "shellPaddingLeft": "8px",
+    "shellPaddingRight": "8px",
+    "defaultStatusActive": true,
+    "controlsInactive": true
+  },
+  {
+    "width": 390,
+    "height": 900,
+    "scrollWidth": 390,
+    "edgeBuildId": "T031-system-bars-final",
+    "headerBeforeDisplay": "none",
+    "titleTop": 32,
+    "navBottom": 900,
+    "navPaddingBottom": "18px",
+    "activeItemBottom": 882,
+    "shellPaddingLeft": "10px",
+    "shellPaddingRight": "10px",
+    "defaultStatusActive": true,
+    "controlsInactive": true
+  }
+]

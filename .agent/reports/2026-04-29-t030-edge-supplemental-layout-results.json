@@ -1,0 +1,90 @@
+[
+  {
+    "width": 320,
+    "height": 900,
+    "scrollWidth": 320,
+    "nativeTop": "32px",
+    "nativeRight": "18px",
+    "nativeBottom": "24px",
+    "nativeLeft": "16px",
+    "contentSafeLeft": "0px",
+    "contentSafeRight": "0px",
+    "diagnosticBackground": "transparent",
+    "shellPaddingLeft": "10px",
+    "shellPaddingRight": "10px",
+    "navBottom": 900,
+    "activeItemBottom": 871,
+    "headerTitleTop": 40,
+    "meta": {
+      "density": 3,
+      "webViewWidthPx": 960,
+      "viewportWidth": 320,
+      "nativeCssWidth": 320,
+      "widthRatio": 0.3333333333333333,
+      "ratioApplied": false
+    }
+  },
+  {
+    "width": 360,
+    "height": 900,
+    "scrollWidth": 360,
+    "nativeTop": "32px",
+    "nativeRight": "18px",
+    "nativeBottom": "24px",
+    "nativeLeft": "16px",
+    "contentSafeLeft": "0px",
+    "contentSafeRight": "0px",
+    "diagnosticBackground": "transparent",
+    "shellPaddingLeft": "10px",
+    "shellPaddingRight": "10px",
+    "navBottom": 900,
+    "activeItemBottom": 871,
+    "headerTitleTop": 40,
+    "meta": {
+      "density": 3,
+      "webViewWidthPx": 1080,
+      "viewportWidth": 360,
+      "nativeCssWidth": 360,
+      "widthRatio": 0.3333333333333333,
+      "ratioApplied": false
+    }
+  },
+  {
+    "width": 390,
+    "height": 900,
+    "scrollWidth": 390,
+    "nativeTop": "32px",
+    "nativeRight": "18px",
+    "nativeBottom": "24px",
+    "nativeLeft": "16px",
+    "contentSafeLeft": "0px",
+    "contentSafeRight": "0px",
+    "diagnosticBackground": "transparent",
+    "shellPaddingLeft": "12px",
+    "shellPaddingRight": "12px",
+    "navBottom": 900,
+    "activeItemBottom": 871,
+    "headerTitleTop": 40,
+    "meta": {
+      "density": 3,
+      "webViewWidthPx": 1170,
+      "viewportWidth": 390,
+      "nativeCssWidth": 390,
+      "widthRatio": 0.3333333333333333,
+      "ratioApplied": false
+    }
+  },
+  {
+    "ratioFallback": {
+      "nativeTop": "21.67px",
+      "meta": {
+        "density": 3,
+        "webViewWidthPx": 1080,
+        "viewportWidth": 390,
+        "nativeCssWidth": 360,
+        "widthRatio": 0.3611111111111111,
+        "ratioApplied": true
+      }
+    }
+  }
+]

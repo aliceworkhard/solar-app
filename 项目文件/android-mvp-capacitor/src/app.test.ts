@@ -2,18 +2,29 @@ import { describe, expect, it } from "vitest";
 import {
   BOTTOM_NAV_ITEMS,
   BUSINESS_COMMANDS,
+  COMMAND_PANEL_GROUPS,
+  CONTENT_SAFE_INSET_CSS_VARS,
+  DEFAULT_DETAIL_SECTION,
   DETAIL_SECTION_ANCHORS,
   DEVICE_ASSET_SRC,
   DEVICE_STALE_AFTER_MS,
   DISCOVERY_INTERVAL_MS,
+  EDGE_BUILD_ID,
+  EDGE_DEFAULT_MODE,
+  EDGE_DIAGNOSTIC_DOM_BACKGROUND,
+  EDGE_DIAGNOSTIC_CSS_VARS,
+  EDGE_MODE_BODY_CLASSES,
   LOAD_CURRENT_BRIGHTNESS_FACTOR_AMP,
   PROFILE_PAGE_COPY,
   REFERENCE_UI_CHROME,
   REFERENCE_UI_COPY,
+  SYSTEM_INSET_CSS_VARS,
   STATUS_POLL_INTERVAL_MS,
   SWIPE_DISCONNECT_ACTION_WIDTH_PX,
   SWIPE_DISCONNECT_THRESHOLD_PX,
   TARGET_DEVICE_NAME,
+  applyEdgeModeToClassList,
+  applySystemInsetsToStyle,
   createLiveStatusModel,
   createNearbyDeviceMetrics,
   filterSupportedDevices,
@@ -28,7 +39,10 @@ import {
   resolveBackNavigation,
   resolveBottomNavTab,
   resolveDiscoveryControlState,
+  resolveDetailSectionTarget,
   resolveSwipeDisconnectState,
+  normalizeEdgeMode,
+  resolveNativeCssPx,
   shouldAutoConnectSupportedDevice,
   shouldScheduleInitialDiscovery,
   shouldStartBackgroundDiscovery,
@@ -47,6 +61,24 @@ function status(connectionState: DeviceStatus["connectionState"]): DeviceStatus 
     battery: 0,
     fwVersion: "unknown",
     lastUpdatedAt: 0
+  };
+}
+
+function classListProbe(initial: string[] = []): {
+  classList: DOMTokenList;
+  values: () => string[];
+} {
+  const classes = new Set(initial);
+  return {
+    classList: {
+      add(...tokens: string[]) {
+        tokens.forEach((token) => classes.add(token));
+      },
+      remove(...tokens: string[]) {
+        tokens.forEach((token) => classes.delete(token));
+      }
+    } as DOMTokenList,
+    values: () => Array.from(classes).sort()
   };
 }
 
@@ -83,6 +115,15 @@ describe("App UI command model", () => {
     });
   });
 
+  it("defaults the detail anchor tabs to device status and normalizes invalid targets", () => {
+    expect(DEFAULT_DETAIL_SECTION).toBe("status");
+    expect(resolveDetailSectionTarget("status")).toBe("status");
+    expect(resolveDetailSectionTarget("controls")).toBe("controls");
+    expect(resolveDetailSectionTarget("")).toBe("status");
+    expect(resolveDetailSectionTarget(undefined)).toBe("status");
+    expect(resolveDetailSectionTarget("unknown")).toBe("status");
+  });
+
   it("defines the bottom tabs and the profile page copy without changing BLE command paths", () => {
     expect(BOTTOM_NAV_ITEMS.map((item) => item.label)).toEqual(["设备", "场景", "我的"]);
     expect(BOTTOM_NAV_ITEMS.map((item) => item.id)).toEqual(["device", "scene", "profile"]);
@@ -101,6 +142,156 @@ describe("App UI command model", () => {
     expect((PROFILE_PAGE_COPY as any).sceneLabels.every((label: string) => label.length <= 2)).toBe(true);
   });
 
+  it("maps Android system insets into CSS variables for segmented edge-to-edge layout", () => {
+    const written = new Map<string, string>();
+    applySystemInsetsToStyle(
+      {
+        setProperty(name: string, value: string) {
+          written.set(name, value);
+        }
+      },
+      { top: 32, right: 3, bottom: 24, left: 2 }
+    );
+
+    expect(SYSTEM_INSET_CSS_VARS).toEqual({
+      top: "--system-top",
+      right: "--system-right",
+      bottom: "--system-bottom",
+      left: "--system-left"
+    });
+    expect(Object.fromEntries(written)).toMatchObject({
+      "--native-inset-top": "32px",
+      "--native-inset-right": "3px",
+      "--native-inset-bottom": "24px",
+      "--native-inset-left": "2px",
+      "--system-top": "32px",
+      "--system-right": "3px",
+      "--system-bottom": "24px",
+      "--system-left": "2px"
+    });
+  });
+
+  it("preserves native CSS-pixel inset strings and writes native plus legacy variables", () => {
+    const written = new Map<string, string>();
+    applySystemInsetsToStyle(
+      {
+        setProperty(name: string, value: string) {
+          written.set(name, value);
+        }
+      },
+      { top: "27.5px", right: 0, bottom: "16.25px", left: "3px" } as any
+    );
+
+    expect(Object.fromEntries(written)).toMatchObject({
+      "--native-inset-top": "27.5px",
+      "--native-inset-right": "0px",
+      "--native-inset-bottom": "16.25px",
+      "--native-inset-left": "3px",
+      "--system-top": "27.5px",
+      "--system-right": "0px",
+      "--system-bottom": "16.25px",
+      "--system-left": "3px"
+    });
+  });
+
+  it("keeps ordinary side gesture insets out of the main content safe padding", () => {
+    const written = new Map<string, string>();
+    applySystemInsetsToStyle(
+      {
+        setProperty(name: string, value: string) {
+          written.set(name, value);
+        }
+      },
+      { top: "28px", right: "18px", bottom: "24px", left: "16px" } as any
+    );
+
+    expect(CONTENT_SAFE_INSET_CSS_VARS).toEqual({
+      left: "--content-safe-left",
+      right: "--content-safe-right"
+    });
+    expect(Object.fromEntries(written)).toMatchObject({
+      "--native-inset-left": "16px",
+      "--native-inset-right": "18px",
+      "--content-safe-left": "0px",
+      "--content-safe-right": "0px"
+    });
+  });
+
+  it("uses explicit horizontal cutout/system-bar safe insets separately from gesture insets", () => {
+    const written = new Map<string, string>();
+    applySystemInsetsToStyle(
+      {
+        setProperty(name: string, value: string) {
+          written.set(name, value);
+        }
+      },
+      { left: "16px", right: "18px", contentLeft: "4px", contentRight: "6px" } as any
+    );
+
+    expect(Object.fromEntries(written)).toMatchObject({
+      "--native-inset-left": "16px",
+      "--native-inset-right": "18px",
+      "--content-safe-left": "4px",
+      "--content-safe-right": "6px"
+    });
+  });
+
+  it("converts native physical px to CSS px with a width-ratio fallback when density width mismatches", () => {
+    expect(resolveNativeCssPx(60, { density: 3, webViewWidthPx: 1170, viewportWidth: 390 })).toBe("20px");
+    expect(resolveNativeCssPx(60, { density: 3, webViewWidthPx: 1080, viewportWidth: 390 })).toBe("21.67px");
+    expect(resolveNativeCssPx(0, { density: 3, webViewWidthPx: 1080, viewportWidth: 390 })).toBe("0px");
+  });
+
+  it("exposes a T031 build identity that can prove the installed APK is current", () => {
+    expect(EDGE_BUILD_ID).toBe("T031-system-bars-final");
+  });
+
+  it("defaults the final edge mode to transparent strips rather than visual fallback", () => {
+    const classes = classListProbe(["edge-visual-fallback"]);
+
+    expect(EDGE_DEFAULT_MODE).toBe("transparent");
+    applyEdgeModeToClassList(classes.classList, EDGE_DEFAULT_MODE);
+
+    expect(classes.values()).toEqual(["edge-transparent"]);
+  });
+
+  it("keeps the DOM diagnostic overlay transparent unless native explicitly enables it", () => {
+    const written = new Map<string, string>();
+
+    expect(EDGE_DIAGNOSTIC_DOM_BACKGROUND.disabled).toBe("transparent");
+    applySystemInsetsToStyle(
+      {
+        setProperty(name: string, value: string) {
+          written.set(name, value);
+        }
+      },
+      { top: 24, bottom: 16, diagnosticColors: false }
+    );
+
+    expect(written.get(EDGE_DIAGNOSTIC_CSS_VARS.domBackground)).toBe("transparent");
+  });
+
+  it("normalizes native edge strategy values into stable body classes", () => {
+    expect(EDGE_MODE_BODY_CLASSES).toEqual({
+      transparent: "edge-transparent",
+      "color-match": "edge-color-match",
+      "visual-fallback": "edge-visual-fallback"
+    });
+    expect(normalizeEdgeMode("visual-fallback")).toBe("visual-fallback");
+    expect(normalizeEdgeMode("color-match")).toBe("color-match");
+    expect(normalizeEdgeMode("unexpected")).toBe("transparent");
+  });
+
+  it("switches one edge strategy body class at a time without disturbing other classes", () => {
+    const classes = classListProbe(["app-ready", "edge-transparent"]);
+
+    applyEdgeModeToClassList(classes.classList, "visual-fallback");
+    expect(classes.values()).toEqual(["app-ready", "edge-visual-fallback"]);
+
+    applyEdgeModeToClassList(classes.classList, "color-match");
+    expect(classes.values()).toEqual(["app-ready", "edge-color-match"]);
+  });
+
   it("maps the two-page control surface to the five RF MVP commands once each", () => {
     expect(BUSINESS_COMMANDS.map((command) => command.id)).toEqual([
       "readStatusBtn",
@@ -117,6 +308,18 @@ describe("App UI command model", () => {
       "brightnessDown"
     ]);
     expect(new Set(BUSINESS_COMMANDS.map((command) => command.action)).size).toBe(5);
+  });
+
+  it("prioritizes manual controls and keeps read commands as reserved tools", () => {
+    expect(COMMAND_PANEL_GROUPS).toEqual([
+      { id: "primary", label: "主要控制", commandIds: ["powerToggleBtn"] },
+      { id: "brightness", label: "亮度调节", commandIds: ["brightnessDownBtn", "brightnessUpBtn"] },
+      { id: "reserved", label: "系统读取预留", commandIds: ["readStatusBtn", "readParamsBtn"] }
+    ]);
+
+    const groupedCommandIds = COMMAND_PANEL_GROUPS.flatMap((group) => group.commandIds);
+    expect(groupedCommandIds).toHaveLength(BUSINESS_COMMANDS.length);
+    expect(new Set(groupedCommandIds)).toEqual(new Set(BUSINESS_COMMANDS.map((command) => command.id)));
   });
 
   it("enables business controls only after the controller reaches ready", () => {

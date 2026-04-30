@@ -1,0 +1,194 @@
+[
+  {
+    "width": 320,
+    "scrollWidth": 320,
+    "buttonIds": [
+      "powerToggleBtn",
+      "brightnessDownBtn",
+      "brightnessUpBtn",
+      "readStatusBtn",
+      "readParamsBtn"
+    ],
+    "buttons": [
+      {
+        "id": "powerToggleBtn",
+        "left": 23,
+        "right": 297,
+        "top": 464.78125,
+        "bottom": 534.78125,
+        "width": 274,
+        "height": 70,
+        "label": "开/关"
+      },
+      {
+        "id": "brightnessDownBtn",
+        "left": 23,
+        "right": 156,
+        "top": 542.78125,
+        "bottom": 596.78125,
+        "width": 133,
+        "height": 54,
+        "label": "降低亮度"
+      },
+      {
+        "id": "brightnessUpBtn",
+        "left": 164,
+        "right": 297,
+        "top": 542.78125,
+        "bottom": 596.78125,
+        "width": 133,
+        "height": 54,
+        "label": "增加亮度"
+      },
+      {
+        "id": "readStatusBtn",
+        "left": 23,
+        "right": 156,
+        "top": 622.78125,
+        "bottom": 665.71875,
+        "width": 133,
+        "height": 42.9375,
+        "label": "读状态"
+      },
+      {
+        "id": "readParamsBtn",
+        "left": 164,
+        "right": 297,
+        "top": 622.78125,
+        "bottom": 665.71875,
+        "width": 133,
+        "height": 42.9375,
+        "label": "读参数"
+      }
+    ],
+    "panelTop": 416.78125
+  },
+  {
+    "width": 360,
+    "scrollWidth": 360,
+    "buttonIds": [
+      "powerToggleBtn",
+      "brightnessDownBtn",
+      "brightnessUpBtn",
+      "readStatusBtn",
+      "readParamsBtn"
+    ],
+    "buttons": [
+      {
+        "id": "powerToggleBtn",
+        "left": 23,
+        "right": 337,
+        "top": 464.78125,
+        "bottom": 534.78125,
+        "width": 314,
+        "height": 70,
+        "label": "开/关"
+      },
+      {
+        "id": "brightnessDownBtn",
+        "left": 23,
+        "right": 176,
+        "top": 542.78125,
+        "bottom": 596.78125,
+        "width": 153,
+        "height": 54,
+        "label": "降低亮度"
+      },
+      {
+        "id": "brightnessUpBtn",
+        "left": 184,
+        "right": 337,
+        "top": 542.78125,
+        "bottom": 596.78125,
+        "width": 153,
+        "height": 54,
+        "label": "增加亮度"
+      },
+      {
+        "id": "readStatusBtn",
+        "left": 23,
+        "right": 176,
+        "top": 622.78125,
+        "bottom": 665.71875,
+        "width": 153,
+        "height": 42.9375,
+        "label": "读状态"
+      },
+      {
+        "id": "readParamsBtn",
+        "left": 184,
+        "right": 337,
+        "top": 622.78125,
+        "bottom": 665.71875,
+        "width": 153,
+        "height": 42.9375,
+        "label": "读参数"
+      }
+    ],
+    "panelTop": 416.78125
+  },
+  {
+    "width": 390,
+    "scrollWidth": 390,
+    "buttonIds": [
+      "powerToggleBtn",
+      "brightnessDownBtn",
+      "brightnessUpBtn",
+      "readStatusBtn",
+      "readParamsBtn"
+    ],
+    "buttons": [
+      {
+        "id": "powerToggleBtn",
+        "left": 25,
+        "right": 365,
+        "top": 464.78125,
+        "bottom": 534.78125,
+        "width": 340,
+        "height": 70,
+        "label": "开/关"
+      },
+      {
+        "id": "brightnessDownBtn",
+        "left": 25,
+        "right": 191,
+        "top": 542.78125,
+        "bottom": 596.78125,
+        "width": 166,
+        "height": 54,
+        "label": "降低亮度"
+      },
+      {
+        "id": "brightnessUpBtn",
+        "left": 199,
+        "right": 365,
+        "top": 542.78125,
+        "bottom": 596.78125,
+        "width": 166,
+        "height": 54,
+        "label": "增加亮度"
+      },
+      {
+        "id": "readStatusBtn",
+        "left": 25,
+        "right": 191,
+        "top": 622.78125,
+        "bottom": 665.71875,
+        "width": 166,
+        "height": 42.9375,
+        "label": "读状态"
+      },
+      {
+        "id": "readParamsBtn",
+        "left": 199,
+        "right": 365,
+        "top": 622.78125,
+        "bottom": 665.71875,
+        "width": 166,
+        "height": 42.9375,
+        "label": "读参数"
+      }
+    ],
+    "panelTop": 416.78125
+  }
+]

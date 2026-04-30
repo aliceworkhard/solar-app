@@ -8,6 +8,10 @@ type BackNavigationResult = "home" | "exit";
 type NativeBackAction = "handled" | "exit";
 type SwipeDisconnectState = "closed" | "open";
 type FeedbackTone = "idle" | "pending" | "success" | "error";
+type EdgeMode = "transparent" | "color-match" | "visual-fallback";
+type StyleWriter = Pick<CSSStyleDeclaration, "setProperty">;
+type SystemInsetValue = number | string;
+type CommandPanelGroupId = "primary" | "brightness" | "reserved";
 type BusinessCommandAction =
   | "readStatus"
   | "readParams"
@@ -18,6 +22,13 @@ type BusinessCommandAction =
 declare global {
   interface Window {
     solarRemoteHandleNativeBack?: () => NativeBackAction;
+    solarRemoteApplySystemInsets?: (insets: Partial<SystemInsets>) => void;
+    solarRemoteSetEdgeMode?: (mode: string) => void;
+    __nativeSystemInsets?: Partial<SystemInsets>;
+    __nativeSystemInsetsMeta?: NativeSystemInsetsMeta;
+    __edgeInsetsMismatchLogged?: boolean;
+    __edgeBuildId?: string;
+    __edgeBuildLogged?: boolean;
   }
 }
 
@@ -26,6 +37,12 @@ export interface BusinessCommand {
   label: string;
   description: string;
   action: BusinessCommandAction;
+}
+
+export interface CommandPanelGroup {
+  id: CommandPanelGroupId;
+  label: string;
+  commandIds: string[];
 }
 
 export interface LiveStatusModel {
@@ -62,6 +79,49 @@ export interface BottomNavItem {
   icon: string;
 }
 
+export interface SystemInsets {
+  top: SystemInsetValue;
+  right: SystemInsetValue;
+  bottom: SystemInsetValue;
+  left: SystemInsetValue;
+  topPx?: SystemInsetValue;
+  rightPx?: SystemInsetValue;
+  bottomPx?: SystemInsetValue;
+  leftPx?: SystemInsetValue;
+  contentLeft?: SystemInsetValue;
+  contentRight?: SystemInsetValue;
+  contentLeftPx?: SystemInsetValue;
+  contentRightPx?: SystemInsetValue;
+  density?: SystemInsetValue;
+  webViewWidthPx?: SystemInsetValue;
+  viewportWidth?: SystemInsetValue;
+  diagnosticColors?: boolean;
+}
+
+export interface NormalizedSystemInsets {
+  top: string;
+  right: string;
+  bottom: string;
+  left: string;
+  contentLeft: string;
+  contentRight: string;
+}
+
+export interface NativeInsetConversionMetrics {
+  density?: SystemInsetValue;
+  webViewWidthPx?: SystemInsetValue;
+  viewportWidth?: SystemInsetValue;
+}
+
+export interface NativeSystemInsetsMeta {
+  density: number;
+  webViewWidthPx: number;
+  viewportWidth: number;
+  nativeCssWidth: number;
+  widthRatio: number;
+  ratioApplied: boolean;
+}
+
 export const BUSINESS_COMMANDS: BusinessCommand[] = [
   {
     id: "readStatusBtn",
@@ -95,14 +155,51 @@ export const BUSINESS_COMMANDS: BusinessCommand[] = [
   }
 ];
 
+export const COMMAND_PANEL_GROUPS: CommandPanelGroup[] = [
+  { id: "primary", label: "主要控制", commandIds: ["powerToggleBtn"] },
+  { id: "brightness", label: "亮度调节", commandIds: ["brightnessDownBtn", "brightnessUpBtn"] },
+  { id: "reserved", label: "系统读取预留", commandIds: ["readStatusBtn", "readParamsBtn"] }
+];
+
+export const EDGE_BUILD_ID = "T031-system-bars-final";
+export const EDGE_MODE_BODY_CLASSES: Record<EdgeMode, string> = {
+  transparent: "edge-transparent",
+  "color-match": "edge-color-match",
+  "visual-fallback": "edge-visual-fallback"
+};
+export const EDGE_DEFAULT_MODE: EdgeMode = "transparent";
+export const EDGE_DIAGNOSTIC_DOM_BACKGROUND = {
+  enabled: "rgba(90, 170, 255, 0.22)",
+  disabled: "transparent"
+} as const;
 export const DEVICE_ASSET_SRC = "/assets/ui/mppt_gray_black_controller_transparent.png";
 export const TARGET_DEVICE_NAME = "AC632N_1";
 export const DETAIL_SECTION_ANCHORS = {
   status: "deviceStatusSection",
   controls: "controlPanelSection"
 } as const;
-type DetailSectionName = keyof typeof DETAIL_SECTION_ANCHORS;
+export type DetailSectionName = keyof typeof DETAIL_SECTION_ANCHORS;
+export const DEFAULT_DETAIL_SECTION: DetailSectionName = "status";
 export const LOAD_CURRENT_BRIGHTNESS_FACTOR_AMP = 9.7272;
+export const SYSTEM_INSET_CSS_VARS = {
+  top: "--system-top",
+  right: "--system-right",
+  bottom: "--system-bottom",
+  left: "--system-left"
+} as const;
+export const NATIVE_SYSTEM_INSET_CSS_VARS = {
+  top: "--native-inset-top",
+  right: "--native-inset-right",
+  bottom: "--native-inset-bottom",
+  left: "--native-inset-left"
+} as const;
+export const CONTENT_SAFE_INSET_CSS_VARS = {
+  left: "--content-safe-left",
+  right: "--content-safe-right"
+} as const;
+export const EDGE_DIAGNOSTIC_CSS_VARS = {
+  domBackground: "--edge-dom-overlay-background"
+} as const;
 export const REFERENCE_UI_COPY = {
   homeTitle: "设备",
   homeSubtitle: "连接并管理您的 MPPT 设备",
@@ -164,6 +261,158 @@ export function resolveBottomNavTab(view: ViewName): BottomNavTab {
     return "profile";
   }
   return "device";
+}
+
+export function resolveDetailSectionTarget(target: string | null | undefined): DetailSectionName {
+  return target === "controls" ? "controls" : DEFAULT_DETAIL_SECTION;
+}
+
+export function normalizeSystemInsets(
+  insets: Partial<SystemInsets> = {},
+  viewportWidth?: SystemInsetValue
+): NormalizedSystemInsets {
+  const metrics: NativeInsetConversionMetrics = {
+    density: insets.density,
+    webViewWidthPx: insets.webViewWidthPx,
+    viewportWidth: insets.viewportWidth ?? viewportWidth
+  };
+  return {
+    top: normalizeDirectionalInset(insets.top, insets.topPx, metrics),
+    right: normalizeDirectionalInset(insets.right, insets.rightPx, metrics),
+    bottom: normalizeDirectionalInset(insets.bottom, insets.bottomPx, metrics),
+    left: normalizeDirectionalInset(insets.left, insets.leftPx, metrics),
+    contentLeft: normalizeDirectionalInset(insets.contentLeft, insets.contentLeftPx, metrics),
+    contentRight: normalizeDirectionalInset(insets.contentRight, insets.contentRightPx, metrics)
+  };
+}
+
+export function applySystemInsetsToStyle(
+  style: StyleWriter,
+  insets: Partial<SystemInsets>,
+  viewportWidth?: SystemInsetValue
+): void {
+  const normalized = normalizeSystemInsets(insets, viewportWidth);
+  style.setProperty(NATIVE_SYSTEM_INSET_CSS_VARS.top, normalized.top);
+  style.setProperty(NATIVE_SYSTEM_INSET_CSS_VARS.right, normalized.right);
+  style.setProperty(NATIVE_SYSTEM_INSET_CSS_VARS.bottom, normalized.bottom);
+  style.setProperty(NATIVE_SYSTEM_INSET_CSS_VARS.left, normalized.left);
+  style.setProperty(SYSTEM_INSET_CSS_VARS.top, normalized.top);
+  style.setProperty(SYSTEM_INSET_CSS_VARS.right, normalized.right);
+  style.setProperty(SYSTEM_INSET_CSS_VARS.bottom, normalized.bottom);
+  style.setProperty(SYSTEM_INSET_CSS_VARS.left, normalized.left);
+  style.setProperty(CONTENT_SAFE_INSET_CSS_VARS.left, normalized.contentLeft);
+  style.setProperty(CONTENT_SAFE_INSET_CSS_VARS.right, normalized.contentRight);
+  style.setProperty(
+    EDGE_DIAGNOSTIC_CSS_VARS.domBackground,
+    insets.diagnosticColors ? EDGE_DIAGNOSTIC_DOM_BACKGROUND.enabled : EDGE_DIAGNOSTIC_DOM_BACKGROUND.disabled
+  );
+}
+
+export function normalizeEdgeMode(mode: unknown): EdgeMode {
+  return mode === "color-match" || mode === "visual-fallback" || mode === "transparent"
+    ? mode
+    : "transparent";
+}
+
+export function applyEdgeModeToClassList(classList: DOMTokenList, mode: unknown): EdgeMode {
+  const normalized = normalizeEdgeMode(mode);
+  Object.values(EDGE_MODE_BODY_CLASSES).forEach((className) => classList.remove(className));
+  classList.add(EDGE_MODE_BODY_CLASSES[normalized]);
+  return normalized;
+}
+
+export function resolveNativeCssPx(
+  physicalPx: unknown,
+  metrics: NativeInsetConversionMetrics = {}
+): string {
+  const physicalValue = parsePositiveNumber(physicalPx);
+  if (!physicalValue) {
+    return "0px";
+  }
+
+  const density = parsePositiveNumber(metrics.density);
+  const webViewWidthPx = parsePositiveNumber(metrics.webViewWidthPx);
+  const viewportWidth = parsePositiveNumber(metrics.viewportWidth);
+  let cssPx = density ? physicalValue / density : physicalValue;
+
+  if (density && webViewWidthPx && viewportWidth) {
+    const nativeCssWidth = webViewWidthPx / density;
+    const mismatchThreshold = Math.max(2, viewportWidth * 0.02);
+    if (Math.abs(nativeCssWidth - viewportWidth) > mismatchThreshold) {
+      cssPx = physicalValue * (viewportWidth / webViewWidthPx);
+    }
+  }
+
+  return formatCssPx(cssPx);
+}
+
+export function createNativeSystemInsetsMeta(
+  insets: Partial<SystemInsets>,
+  viewportWidth?: SystemInsetValue
+): NativeSystemInsetsMeta {
+  const density = parsePositiveNumber(insets.density) ?? 0;
+  const webViewWidthPx = parsePositiveNumber(insets.webViewWidthPx) ?? 0;
+  const resolvedViewportWidth = parsePositiveNumber(insets.viewportWidth ?? viewportWidth) ?? 0;
+  const nativeCssWidth = density && webViewWidthPx ? webViewWidthPx / density : 0;
+  const widthRatio = webViewWidthPx && resolvedViewportWidth ? resolvedViewportWidth / webViewWidthPx : 0;
+  const ratioApplied =
+    Boolean(density && webViewWidthPx && resolvedViewportWidth) &&
+    Math.abs(nativeCssWidth - resolvedViewportWidth) > Math.max(2, resolvedViewportWidth * 0.02);
+
+  return {
+    density,
+    webViewWidthPx,
+    viewportWidth: resolvedViewportWidth,
+    nativeCssWidth,
+    widthRatio,
+    ratioApplied
+  };
+}
+
+function normalizeDirectionalInset(
+  cssValue: unknown,
+  physicalPx: unknown,
+  metrics: NativeInsetConversionMetrics
+): string {
+  if (physicalPx !== undefined && physicalPx !== null) {
+    return resolveNativeCssPx(physicalPx, metrics);
+  }
+  return normalizeInsetValue(cssValue);
+}
+
+function normalizeInsetValue(value: unknown): string {
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+    return formatCssPx(value);
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    const numeric = trimmed.endsWith("px") ? Number(trimmed.slice(0, -2)) : Number(trimmed);
+    if (Number.isFinite(numeric) && numeric > 0) {
+      return formatCssPx(numeric);
+    }
+  }
+  return "0px";
+}
+
+function parsePositiveNumber(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+    return value;
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    const numeric = trimmed.endsWith("px") ? Number(trimmed.slice(0, -2)) : Number(trimmed);
+    if (Number.isFinite(numeric) && numeric > 0) {
+      return numeric;
+    }
+  }
+  return undefined;
+}
+
+function formatCssPx(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) {
+    return "0px";
+  }
+  return `${Number(value.toFixed(2))}px`;
 }
 
 export function isControlReady(status: DeviceStatus): boolean {
@@ -435,6 +684,7 @@ export class App {
   private statusPollTimer: ReturnType<typeof setTimeout> | null = null;
   private statusPollInFlight = false;
   private swipedDeviceId = "";
+  private activeDetailSection: DetailSectionName = DEFAULT_DETAIL_SECTION;
   private discoveryRound = 0;
   private scanOperationSeq = 0;
   private activeScanOperationId = 0;
@@ -450,6 +700,7 @@ export class App {
   }
 
   start(): void {
+    this.installSystemInsetBridge();
     this.installBackNavigation();
     this.render();
     this.controller.onStatusChange((status) => {
@@ -499,13 +750,9 @@ export class App {
           </section>
 
           <section class="panel control-panel ${this.view === "control" ? "active" : ""}" id="controlPanel">
-            <div class="detail-tabs" aria-label="页面分组">
-              <button class="detail-tab-button" data-detail-target="status" type="button">
-                ${REFERENCE_UI_COPY.controlTabs[0]}
-              </button>
-              <button class="detail-tab-button" data-detail-target="controls" type="button">
-                ${REFERENCE_UI_COPY.controlTabs[1]}
-              </button>
+            <div class="detail-tabs" role="tablist" aria-label="页面分组">
+              ${this.renderDetailTabButton("status", REFERENCE_UI_COPY.controlTabs[0])}
+              ${this.renderDetailTabButton("controls", REFERENCE_UI_COPY.controlTabs[1])}
             </div>
             <div class="control-stack">
               <article class="detail-device-card live-status-card" id="${DETAIL_SECTION_ANCHORS.status}" tabindex="-1">
@@ -559,16 +806,7 @@ export class App {
                   <h2>${REFERENCE_UI_COPY.commandPanelTitle}</h2>
                   <span class="write-chip">写入方式：<b id="writeTypeValue">-</b></span>
                 </div>
-                <div class="command-grid">
-                  ${BUSINESS_COMMANDS.map(
-                    (command) => `
-                      <button class="btn command-btn" id="${command.id}" data-action="${command.action}">
-                        <span>${command.label}</span>
-                        <small>${command.description}</small>
-                      </button>
-                    `
-                  ).join("")}
-                </div>
+                ${this.renderCommandPanel()}
                 <div class="result result-live" id="resultArea" hidden></div>
                 <div class="seg readonly control-mode-strip" id="modeSeg" aria-label="模式展示">
                   <button data-mode="radar" class="seg-btn" type="button">雷达模式</button>
@@ -626,6 +864,23 @@ export class App {
       return REFERENCE_UI_COPY.profileTitle;
     }
     return REFERENCE_UI_COPY.homeTitle;
+  }
+
+  private renderDetailTabButton(section: DetailSectionName, label: string): string {
+    const isActive = this.activeDetailSection === section;
+    return `
+      <button
+        class="detail-tab-button ${isActive ? "active" : ""}"
+        data-detail-target="${section}"
+        type="button"
+        role="tab"
+        aria-selected="${isActive}"
+        aria-current="${isActive ? "page" : "false"}"
+        aria-controls="${DETAIL_SECTION_ANCHORS[section]}"
+      >
+        ${label}
+      </button>
+    `;
   }
 
   private pageSubtitle(): string {
@@ -752,6 +1007,82 @@ export class App {
     `;
   }
 
+  private renderCommandPanel(): string {
+    const primaryGroup = this.commandPanelGroup("primary");
+    const brightnessGroup = this.commandPanelGroup("brightness");
+    const reservedGroup = this.commandPanelGroup("reserved");
+
+    return `
+      <div class="command-panel-body">
+        <div class="command-primary-row" aria-label="${primaryGroup.label}">
+          ${primaryGroup.commandIds.map((id) => this.renderCommandButton(id, "command-btn-primary")).join("")}
+        </div>
+        <div class="brightness-command-row" aria-label="${brightnessGroup.label}">
+          ${brightnessGroup.commandIds.map((id) => this.renderCommandButton(id, "command-btn-brightness")).join("")}
+        </div>
+        <div class="reserved-command-block" aria-label="${reservedGroup.label}">
+          <div class="reserved-command-head">
+            <span>系统读取</span>
+            <small>预留</small>
+          </div>
+          <div class="reserved-command-row">
+            ${reservedGroup.commandIds.map((id) => this.renderCommandButton(id, "command-btn-reserved")).join("")}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  private renderCommandButton(commandId: string, variantClass: string): string {
+    const command = this.businessCommand(commandId);
+    return `
+      <button class="btn command-btn ${variantClass} command-${command.action}" id="${command.id}" data-action="${
+        command.action
+      }" type="button">
+        <span class="command-icon" aria-hidden="true">${this.commandSymbol(command.action)}</span>
+        <span class="command-copy">
+          <span class="command-title">${command.label}</span>
+          <small>${this.commandHint(command)}</small>
+        </span>
+      </button>
+    `;
+  }
+
+  private commandPanelGroup(id: CommandPanelGroupId): CommandPanelGroup {
+    const group = COMMAND_PANEL_GROUPS.find((item) => item.id === id);
+    if (!group) {
+      throw new Error(`Missing command panel group: ${id}`);
+    }
+    return group;
+  }
+
+  private businessCommand(commandId: string): BusinessCommand {
+    const command = BUSINESS_COMMANDS.find((item) => item.id === commandId);
+    if (!command) {
+      throw new Error(`Missing business command: ${commandId}`);
+    }
+    return command;
+  }
+
+  private commandSymbol(action: BusinessCommandAction): string {
+    const symbols: Record<BusinessCommandAction, string> = {
+      readStatus: "S",
+      readParams: "P",
+      powerToggle: "I/O",
+      brightnessUp: "+",
+      brightnessDown: "-"
+    };
+    return symbols[action];
+  }
+
+  private commandHint(command: BusinessCommand): string {
+    const hints: Partial<Record<BusinessCommandAction, string>> = {
+      readStatus: "状态读取预留",
+      readParams: "参数读取预留"
+    };
+    return hints[command.action] ?? command.description;
+  }
+
   private bindEvents(): void {
     this.byId("scanBtn").addEventListener("click", () => {
       void this.toggleContinuousDiscovery();
@@ -772,7 +1103,8 @@ export class App {
     });
     this.root.querySelectorAll<HTMLButtonElement>(".detail-tab-button").forEach((button) => {
       button.addEventListener("click", () => {
-        const target = button.dataset.detailTarget === "controls" ? "controls" : "status";
+        const target = resolveDetailSectionTarget(button.dataset.detailTarget);
+        this.setActiveDetailSection(target);
         this.scrollToDetailSection(target);
       });
     });
@@ -1163,6 +1495,21 @@ export class App {
     section.focus({ preventScroll: true });
   }
 
+  private setActiveDetailSection(target: DetailSectionName): void {
+    this.activeDetailSection = target;
+    this.refreshDetailTabs();
+  }
+
+  private refreshDetailTabs(): void {
+    this.root.querySelectorAll<HTMLButtonElement>(".detail-tab-button").forEach((button) => {
+      const target = resolveDetailSectionTarget(button.dataset.detailTarget);
+      const isActive = target === this.activeDetailSection;
+      button.classList.toggle("active", isActive);
+      button.setAttribute("aria-selected", String(isActive));
+      button.setAttribute("aria-current", isActive ? "page" : "false");
+    });
+  }
+
   private refreshDeviceList(): void {
     const list = this.byId("deviceList");
     this.devices = filterSupportedDevices(this.devices);
@@ -1458,6 +1805,7 @@ export class App {
   private openControlPage(message?: string, pushHistory = true): void {
     this.stopContinuousDiscovery(message);
     this.view = "control";
+    this.activeDetailSection = DEFAULT_DETAIL_SECTION;
     if (pushHistory && typeof window !== "undefined" && window.history.state?.solarRemoteView !== "control") {
       window.history.pushState({ solarRemoteView: "control" }, "", "#control");
     }
@@ -1470,6 +1818,7 @@ export class App {
       return;
     }
     this.view = nextView;
+    this.activeDetailSection = DEFAULT_DETAIL_SECTION;
     if (typeof window !== "undefined") {
       window.history.replaceState({ solarRemoteView: "home" }, "", window.location.pathname + window.location.search);
     }
@@ -1502,8 +1851,44 @@ export class App {
         return;
       }
       this.view = nextView;
+      this.activeDetailSection = DEFAULT_DETAIL_SECTION;
       this.render();
     });
+  }
+
+  private installSystemInsetBridge(): void {
+    if (typeof window === "undefined" || typeof document === "undefined") {
+      return;
+    }
+    window.__edgeBuildId = EDGE_BUILD_ID;
+    document.documentElement.dataset.edgeBuild = EDGE_BUILD_ID;
+    window.solarRemoteSetEdgeMode = (mode) => {
+      applyEdgeModeToClassList(document.body.classList, mode);
+    };
+    window.solarRemoteSetEdgeMode(EDGE_DEFAULT_MODE);
+    if (!window.__edgeBuildLogged && typeof console !== "undefined" && typeof console.info === "function") {
+      window.__edgeBuildLogged = true;
+      console.info(`[EdgeT031] build id = ${EDGE_BUILD_ID}`);
+    }
+    window.solarRemoteApplySystemInsets = (insets) => {
+      window.__nativeSystemInsets = { ...insets };
+      const viewportWidth = window.innerWidth || insets.viewportWidth;
+      const meta = createNativeSystemInsetsMeta(insets, viewportWidth);
+      window.__nativeSystemInsetsMeta = meta;
+      applySystemInsetsToStyle(document.documentElement.style, insets, viewportWidth);
+      if (
+        meta.ratioApplied &&
+        !window.__edgeInsetsMismatchLogged &&
+        typeof console !== "undefined" &&
+        typeof console.info === "function"
+      ) {
+        window.__edgeInsetsMismatchLogged = true;
+        console.info("[solar-edge-insets] viewport/native CSS width mismatch; using width ratio", meta);
+      }
+    };
+    if (window.__nativeSystemInsets) {
+      window.solarRemoteApplySystemInsets(window.__nativeSystemInsets);
+    }
   }
 
   private handleNativeBack(): NativeBackAction {

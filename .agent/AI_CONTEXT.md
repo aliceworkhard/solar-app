@@ -1,6 +1,6 @@
 ﻿# AI Context
 
-更新时间：2026-04-28
+更新时间：2026-04-29
 
 ## Project Purpose
 
@@ -38,7 +38,7 @@
 
 ## Current Verification State
 
-- `npm.cmd test`：最近一次通过，5 个测试文件、48 个测试通过。
+- `npm.cmd test`：最近一次通过，5 个测试文件、60 个测试通过。
 - T-003 响应等待策略：5 条 MVP 命令默认不等待回包；显式 `waitForResponse=true` 路径已补单测，写入失败会清理 pending 后重试。
 - T-004 两页业务 UI：主页扫描/快连/连接反馈可见，控制页 5 个 RF 命令一一映射到 `DeviceController`，调试台隐藏保留。
 - T-002 前置接入：App 面向方法已锁定 5 条最小命令集 HEX，并有 `CommandBuilder` 与 `DeviceController` 写入链路测试覆盖。
@@ -51,6 +51,13 @@
 - 2026-04-28 接手后用户确认：T-001/T-002 先不做，任务保留；协议回传只有读状态和读参数，其他控制命令不用回传；开/关按当前指令执行，能否区分独立开机/关机仍待真机确认；状态栏渐变真机未通过，是否再改等用户后续决定；详情页锚点可能要改但等待用户信息；电流显示规则已通过。
 - T-025 UI：底部导航 `设备/场景/我的` 已加入；`场景` 为预留页；`我的` 为静态信息页；详情页顶部更紧凑；Android 增加 native/window 渐变兜底；测试、build、sync、debug APK 构建通过，状态栏效果仍需 vivo 真机复验。
 - T-026 UI：`我的设备` 与 `我的场景` 已改为窄屏单行并排、短标签和更小字号；底部导航更紧凑并使用 safe-area spacing；320/360/390px 本地浏览器检查通过；已导出非 `testOnly` APK。
+- T-027 Android edge-to-edge：原生入口改为 `WindowCompat.enableEdgeToEdge(window)` + `WindowInsetsCompat` 注入 CSS 变量，删除旧 `SYSTEM_UI_FLAG_*` 分支；Web/CSS 改为 header/main/bottom tab 分区消费 inset；本地模拟 inset 检查、build、APK 校验通过；真机手势/三键导航仍需复验。
+- T-028 控制面板按钮：`开/关` 已成为主控制，`降低亮度 / 增加亮度` 为对称调节组，`读状态 / 读参数` 已降级为低层级系统读取预留入口；5 个按钮 id/action 不变，BLE、协议和 `deviceController.ts` 未改。
+- T-029 vivo / Capacitor WebView edge-to-edge hardening：在 T-027 基础上增加 native 非黑背景兜底、top/bottom system-bar paint fallback、DecorView insets 分发、native px -> CSS px 注入、Capacitor `SystemBars` 配置和 Web `--edge-*` 变量；本地 Chrome 320/360/390px 检查、build、APK 校验通过；vivo 手势/三键导航仍需真机复验。
+- T-030 edge-to-edge 补充加固：确认 Capacitor `@capacitor/core/android/cli@8.3.1` 支持 SystemBars 后保留配置；删除 WebView no-op insets listener，避免覆盖 Capacitor SystemBars parent listener；native paint fallback 改为 content 背后系统栏区域；raw px + density + WebView 宽度注入 Web，Web 侧增加 width-ratio fallback；CSS `--edge-*` 使用 max(native, system, safe-area, env)；`.shell` 左右间距恢复基础档位，不再被普通 side gesture inset 压缩；本地 Chrome 320/360/390px 检查、build、sync、APK 校验通过；最新 APK 为 `交付物/solar-remote-t030-sideload.apk` / `C:\solar-apk\solar-remote-t030-sideload.apk`，SHA256 `1DAE6CF6146381F0348ED94660DE0D53E36EB330F9E6515F705554A33C75D0BC`。
+- T-031 Final：vivo 真机 Probe 已出现顶部青色、底部绿色，证明 native strip / edge-to-edge 路径可见；最终版固定 `TRANSPARENT_EDGE_WITH_STRIPS`，关闭 `EDGE_PROBE_COLORS`，native top/bottom strip 与 Web/CSS 背景统一为正式浅色，Web 默认 `edge-transparent`；Capacitor `SystemBars.insetsHandling` 继续为 `disable`，由 native 主控；最新正式 APK 为 `交付物/solar-remote-t031-sideload.apk` / `C:\solar-apk\solar-remote-t031-sideload.apk`，SHA256 `2CE79E87FDDCE625B537417A91927046C86E4E4863B61EAF0180C3DE90025F3E`。
+- T-032 UI Header / TabBar Compact Polish：T031 Final 真机已确认系统栏有变化后，按用户反馈去掉标题下方矩形感；header 伪背景层关闭，home 状态提示改为无卡片文字行，`场景` 预留页不再显示空矩形；`设备/场景/我的/具体设备` 标题整体上移；bottom TabBar 继续 `bottom:0` 且内容更贴底；详情锚点默认选中并点亮 `设备状态`，点击 `控制面板` 会切换选中态。BLE、协议、Android native edge-to-edge 和 `deviceController.ts` 未改。最新正式 APK 为 `交付物/solar-remote-t032-sideload.apk` / `C:\solar-apk\solar-remote-t032-sideload.apk`，SHA256 `861A9E929C97F24E51A4D0B6F6ED93E60ABEFF7925290FA8135B8F1D060A82FA`。
+- T-033 Edge Spacing Micro Adjust：在 T032 基础上做 1-2px 级别 UI 间距微调；模拟 top inset 32px 时标题 top 从 34px 上移到 32px；bottom nav padding-bottom 从 20px 收到 18px；320/360px shell 左右 padding 从 10px 放宽到 8px，390px 从 12px 放宽到 10px；仍保持 bottom nav `bottom:0`、无横向溢出、详情页默认点亮 `设备状态`。BLE、协议、Android native edge-to-edge 和 `deviceController.ts` 未改。最新正式 APK 为 `交付物/solar-remote-t033-sideload.apk` / `C:\solar-apk\solar-remote-t033-sideload.apk`，SHA256 `45AD1807CCD71BFFEFC964E7A77AF1E5FDA326AF439E1C17E51F303F6E621A4F`。
 
 ## Working Rules
 
@@ -137,9 +144,9 @@
 - T-009 持续发现仍需真机验证补扫间隔、过期时间和进入控制页后的低频保活策略。
 - 协议回传口径已由用户确认：只有读状态和读参数需要关注回传，其他控制命令不用回传；程序默认不等待，仅允许显式标记命令等待。
 - 开/关命令按当前 `0x0A` 指令执行，是否能区分独立开机/关机仍待真机确认。
-- vivo/Android 状态栏渐变已在 T-025 再试一版 native/window 背景兜底；是否真正进入系统顶部状态栏区域仍需真机复验。
-- T-026 已针对底部导航和 profile 页面密度再改一版；仍需 vivo 真机视觉确认底栏是否避开系统导航区域、顶部是否无重叠。
-- 详情页顶部间距已在 T-025 压缩；锚点滚动是否还需改等待真机反馈。
+- T-033 APK 已生成；下一步安装 `solar-remote-t033-sideload.apk` 真机确认顶部内容更靠上、底部 TabBar 更贴底、左右边距更合适、详情页默认点亮 `设备状态`。
+- T-028 已重设计控制面板按钮；仍需真机确认 enabled 状态下的视觉观感与误触风险。
+- 详情页锚点已在 T-032 增加默认/切换选中态；真机仍需确认滚动落点和视觉位置是否符合预期。
 - Debug APK 可通过临时设置 Android Studio JBR `JAVA_HOME` 验证；如需全局常规命令仍可后续配置环境变量。
 - 多 agent 框架已建立，但还未经过一次真实多人协作演练。
 
@@ -229,3 +236,37 @@
 - Verification: TDD red check failed first as expected; `npm.cmd test -- src/app.test.ts` passed 27 tests; `npm.cmd test` passed 5 files / 48 tests; `npm.cmd run build` passed; `npm.cmd run sync` passed; local Chrome layout check passed at 320/360/390px with no horizontal overflow; JBR `:app:assembleDebug --project-prop android.injected.testOnly=false` passed.
 - Delivery: `交付物/solar-remote-t026-sideload.apk` and `C:\solar-apk\solar-remote-t026-sideload.apk`; SHA256 `901050A738DDF4C163439DEB550A8AEF7C799FBF6EA9483840F6F3E95B3EFDD0`; manifest check reports `NO_TEST_ONLY`; `apksigner verify --verbose` verifies.
 - Pending real-phone check: confirm the compact bottom tab bar avoids vivo system navigation interference and the top area has no status-bar overlap.
+
+## T-027 Android Edge-To-Edge Insets Baseline
+
+- Date: 2026-04-29.
+- Scope: Android system-bar and Web/CSS inset handling only; BLE native plugin behavior, protocol HEX, normal-command response waiting, and `deviceController.ts` were not changed.
+- Native edge-to-edge: `MainActivity.java` now calls `WindowCompat.enableEdgeToEdge(window)`, uses `WindowInsetsControllerCompat` for light system-bar icons, disables Android Q+ contrast enforcement, and removes the old `SYSTEM_UI_FLAG_*` layout flags.
+- Insets bridge: WebView receives `WindowInsetsCompat.Type.systemBars()` plus display cutout insets and injects CSS variables `--system-top/right/bottom/left`; listener returns original insets, not `CONSUMED`.
+- Web layout: root `.shell` no longer uses global top/bottom inset padding; `.app-header` consumes top inset, `.bottom-nav` consumes bottom inset while its background remains fixed to the viewport bottom, and `main` receives bottom content spacing.
+- Verification: TDD red check failed first as expected; `npm.cmd test -- src/app.test.ts` passed 28 tests; `npm.cmd test` passed 5 files / 49 tests; `npm.cmd run build` passed; `npm.cmd run sync` passed; local Chrome simulated `top=32px/bottom=24px` layout check passed at 320/360/390px; JBR `:app:assembleDebug --project-prop android.injected.testOnly=false` exited 0.
+- Delivery: `交付物/solar-remote-t027-sideload.apk` and `C:\solar-apk\solar-remote-t027-sideload.apk`; SHA256 `2AE9BD47820C954258277568CFB8EBD8DC4B37EE3F00CB4219E947AFE4242538`; manifest check reports `NO_TEST_ONLY`; `apksigner verify --verbose` verifies.
+- Pending real-phone check: Android 13/14 gesture navigation, Android 15 targetSdk 35+ behavior, and three-button navigation visual validation.
+
+## T-028 Control Panel Command Button Baseline
+
+- Date: 2026-04-29.
+- Scope: App/UI-layer control-panel redesign only; BLE native behavior, protocol HEX, normal-command response waiting, Android native files, and `deviceController.ts` were not changed.
+- Result: `开/关` is the primary command button; `降低亮度 / 增加亮度` render as a paired brightness adjustment row; `读状态 / 读参数` remain available by id/action but are visually demoted into a low-priority `系统读取` reserved area.
+- Rationale: read status/read params should eventually become system-triggered once the app flow is complete, but keeping the entry points avoids blocking later T-002/manual validation.
+- Verification: TDD red check failed first as expected; `npm.cmd test -- src/app.test.ts` passed 29 tests; `npm.cmd test` passed 5 files / 50 tests; `npm.cmd run build` passed; `npm.cmd run sync` passed; Chrome CDP layout check passed at 320/360/390px with no horizontal overflow and command order `powerToggleBtn > brightnessDownBtn > brightnessUpBtn > readStatusBtn > readParamsBtn`; JBR `:app:assembleDebug --project-prop android.injected.testOnly=false` exited 0.
+- Reports: `.agent/reports/2026-04-29-t028-command-panel-layout-check.cjs`, `.agent/reports/2026-04-29-t028-command-panel-layout-results.json`, `.agent/reports/screenshots/2026-04-29-t028-command-panel-390x900.png`.
+- Delivery: `交付物/solar-remote-t028-sideload.apk` and `C:\solar-apk\solar-remote-t028-sideload.apk`; SHA256 `BFA372E50425F0C5EA0B2054AB8D4A1FF521FD18C47F3F1994DA01A0740D95E7`; manifest check has no `testOnly`; `apksigner verify --verbose` verifies.
+- Pending real-phone check: confirm enabled-state visual contrast and control spacing on vivo/Android device.
+
+## T-029 Vivo Capacitor Edge-To-Edge Hardening Baseline
+
+- Date: 2026-04-29.
+- Scope: Android system-bar/WebView/CSS inset hardening only; BLE native behavior, protocol HEX, normal-command response waiting, and `deviceController.ts` were not changed.
+- Native fallback: `MainActivity.java` keeps `WindowCompat.enableEdgeToEdge(window)`, disables Android Q+ system-bar contrast enforcement, sets light system-bar icons, applies non-black drawable backgrounds to window/decor/content, keeps the WebView transparent, and adds top/bottom native paint fallback views.
+- Insets bridge: DecorView listens for `systemBars/displayCutout/systemGestures/tappableElement`, returns original insets, updates native paint heights, converts physical px to CSS px, and injects both `--native-inset-*` and legacy `--system-*`.
+- Capacitor/Web: `capacitor.config.ts` adds bundled `SystemBars` CSS handling; `src/app.ts` accepts string or numeric insets and replays `window.__nativeSystemInsets`; CSS combines native and safe-area values into `--edge-*` and uses those for header, bottom nav, scroll margin, and content spacing.
+- Verification: TDD red check failed first as expected; `npm.cmd test -- src/app.test.ts` passed 30 tests; `npm.cmd test` passed 5 files / 51 tests; `npm.cmd run build` passed; `npm.cmd run sync` passed; Chrome CDP T-029 layout check passed at 320/360/390px with no horizontal overflow and non-transparent html/body/#app/.shell/bottom-nav backgrounds; JBR `:app:assembleDebug --project-prop android.injected.testOnly=false` exited 0.
+- Reports: `.agent/reports/2026-04-29-t029-edge-hardening-layout-check.cjs`, `.agent/reports/2026-04-29-t029-edge-hardening-layout-results.json`, `.agent/reports/screenshots/2026-04-29-t029-edge-hardening-390x900.png`.
+- Delivery: `交付物/solar-remote-t029-sideload.apk` and `C:\solar-apk\solar-remote-t029-sideload.apk`; SHA256 `B80987993290FCB80D267394E6F0DEF57B2DE72C0CAD79AB5E53AD2FFB69415C`; manifest check has no `testOnly`; `apksigner verify --verbose` verifies.
+- Pending real-phone check: vivo / Android 16 gesture navigation and three-button navigation, plus Android 13/14 gesture navigation and Android 15/16 targetSdk behavior.

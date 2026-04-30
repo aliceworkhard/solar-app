@@ -1,0 +1,74 @@
+[
+  {
+    "width": 320,
+    "height": 900,
+    "scrollWidth": 320,
+    "edgeBuildId": "T031-system-bars-final",
+    "datasetEdgeBuild": "T031-system-bars-final",
+    "bodyClasses": [
+      "edge-transparent"
+    ],
+    "overlayBackground": "transparent",
+    "nativeTop": "32px",
+    "nativeBottom": "24px",
+    "contentSafeLeft": "0px",
+    "contentSafeRight": "0px",
+    "shellPaddingLeft": "10px",
+    "shellPaddingRight": "10px",
+    "shellBackgroundImage": "radial-gradient(circle at 12% 0%, rgba(30, 136, 255, 0.14), rgba(0, 0, 0, 0) 28%), radial-gradient(circle at 86% 3%, rgba(244, 154, 0, 0.16), rgba(0, 0, 0, 0) 30%), linear-gradient(rgb(242, 248, 255) 0%, rgb(232, 244, 255) 36%, rgb(220, 238, 255) 100%)",
+    "appBackgroundImage": "radial-gradient(circle at 12% 0%, rgba(30, 136, 255, 0.14), rgba(0, 0, 0, 0) 28%), radial-gradient(circle at 86% 3%, rgba(244, 154, 0, 0.16), rgba(0, 0, 0, 0) 30%), linear-gradient(rgb(242, 248, 255) 0%, rgb(232, 244, 255) 36%, rgb(220, 238, 255) 100%)",
+    "bottomNavBackground": "rgba(228, 242, 255, 0.96)",
+    "bottomNavPaddingBottom": "24px",
+    "headerTitleTop": 40,
+    "navBottom": 900,
+    "activeItemBottom": 876
+  },
+  {
+    "width": 360,
+    "height": 900,
+    "scrollWidth": 360,
+    "edgeBuildId": "T031-system-bars-final",
+    "datasetEdgeBuild": "T031-system-bars-final",
+    "bodyClasses": [
+      "edge-transparent"
+    ],
+    "overlayBackground": "transparent",
+    "nativeTop": "32px",
+    "nativeBottom": "24px",
+    "contentSafeLeft": "0px",
+    "contentSafeRight": "0px",
+    "shellPaddingLeft": "10px",
+    "shellPaddingRight": "10px",
+    "shellBackgroundImage": "radial-gradient(circle at 12% 0%, rgba(30, 136, 255, 0.14), rgba(0, 0, 0, 0) 28%), radial-gradient(circle at 86% 3%, rgba(244, 154, 0, 0.16), rgba(0, 0, 0, 0) 30%), linear-gradient(rgb(242, 248, 255) 0%, rgb(232, 244, 255) 36%, rgb(220, 238, 255) 100%)",
+    "appBackgroundImage": "radial-gradient(circle at 12% 0%, rgba(30, 136, 255, 0.14), rgba(0, 0, 0, 0) 28%), radial-gradient(circle at 86% 3%, rgba(244, 154, 0, 0.16), rgba(0, 0, 0, 0) 30%), linear-gradient(rgb(242, 248, 255) 0%, rgb(232, 244, 255) 36%, rgb(220, 238, 255) 100%)",
+    "bottomNavBackground": "rgba(228, 242, 255, 0.96)",
+    "bottomNavPaddingBottom": "24px",
+    "headerTitleTop": 40,
+    "navBottom": 900,
+    "activeItemBottom": 876
+  },
+  {
+    "width": 390,
+    "height": 900,
+    "scrollWidth": 390,
+    "edgeBuildId": "T031-system-bars-final",
+    "datasetEdgeBuild": "T031-system-bars-final",
+    "bodyClasses": [
+      "edge-transparent"
+    ],
+    "overlayBackground": "transparent",
+    "nativeTop": "32px",
+    "nativeBottom": "24px",
+    "contentSafeLeft": "0px",
+    "contentSafeRight": "0px",
+    "shellPaddingLeft": "12px",
+    "shellPaddingRight": "12px",
+    "shellBackgroundImage": "radial-gradient(circle at 12% 0%, rgba(30, 136, 255, 0.14), rgba(0, 0, 0, 0) 28%), radial-gradient(circle at 86% 3%, rgba(244, 154, 0, 0.16), rgba(0, 0, 0, 0) 30%), linear-gradient(rgb(242, 248, 255) 0%, rgb(232, 244, 255) 36%, rgb(220, 238, 255) 100%)",
+    "appBackgroundImage": "radial-gradient(circle at 12% 0%, rgba(30, 136, 255, 0.14), rgba(0, 0, 0, 0) 28%), radial-gradient(circle at 86% 3%, rgba(244, 154, 0, 0.16), rgba(0, 0, 0, 0) 30%), linear-gradient(rgb(242, 248, 255) 0%, rgb(232, 244, 255) 36%, rgb(220, 238, 255) 100%)",
+    "bottomNavBackground": "rgba(228, 242, 255, 0.96)",
+    "bottomNavPaddingBottom": "24px",
+    "headerTitleTop": 40,
+    "navBottom": 900,
+    "activeItemBottom": 876
+  }
+]

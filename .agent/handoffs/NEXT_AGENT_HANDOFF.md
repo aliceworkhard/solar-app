@@ -1,6 +1,6 @@
 ﻿# Next Agent Handoff
 
-更新时间：2026-04-28 20:25 +08:00
+更新时间：2026-04-30 10:20 +08:00
 
 ## Read First
 
@@ -10,9 +10,10 @@
 2. `.agent/START_HERE.md`
 3. `.agent/AI_CONTEXT.md`
 4. 本文件：`.agent/handoffs/NEXT_AGENT_HANDOFF.md`
-5. `todo.md`
-6. 如果要改任何代码/协议/UI/Android/文档结构，读 `.agent/PLAN_FIRST_WORKFLOW.md` 和 `.codex/skills/plan-first-development/SKILL.md`
-7. 按任务角色读取 `.agent/tasks/active/` 中的 task packet
+5. 最新 GitHub 交接：`.agent/handoffs/2026-04-30-Orchestrator-t033-github-handoff.md`
+6. `todo.md`
+7. 如果要改任何代码/协议/UI/Android/文档结构，读 `.agent/PLAN_FIRST_WORKFLOW.md` 和 `.codex/skills/plan-first-development/SKILL.md`
+8. 按任务角色读取 `.agent/tasks/active/` 中的 task packet
 
 不要默认读取 `.agent/logs/` 全量内容；需要历史时先读 `.agent/CHANGE_INDEX.md`。
 
@@ -20,9 +21,9 @@
 
 - 分支：`main`
 - 远端：`https://github.com/aliceworkhard/solar-app.git`
-- 最新已推送：`84da1c5 docs: prepare next agent handoff`
+- 最新已推送：`0dcee6a feat: refine bottom navigation profile UI`
 - 最新提交：
-  - `84da1c5 docs: prepare next agent handoff`
+  - `0dcee6a feat: refine bottom navigation profile UI`
 - 当前主工程：`项目文件/android-mvp-capacitor`
 - Android debug APK 最近构建通过：`项目文件/android-mvp-capacitor/android/app/build/outputs/apk/debug/app-debug.apk`
 
@@ -58,18 +59,29 @@
 - T-025 已再做一版 vivo 状态栏渐变 native/window 兜底；是否真正显示到系统顶部状态栏仍需真机复验。
 - T-026 已修正 `我的` 页密度：`我的设备` 在 320/360/390px 保持 1 行 3 项，`我的场景` 保持 1 行 4 项；新增文字、图标和底部导航已缩小。
 - 最新可侧载 APK：`交付物/solar-remote-t026-sideload.apk`；英文路径副本：`C:\solar-apk\solar-remote-t026-sideload.apk`；SHA256 `901050A738DDF4C163439DEB550A8AEF7C799FBF6EA9483840F6F3E95B3EFDD0`；manifest 已确认无 `testOnly`。
+- T-027 已重做 Android edge-to-edge/insets：`MainActivity` 使用 `WindowCompat.enableEdgeToEdge(window)`，删除旧 `SYSTEM_UI_FLAG_*` 路径，通过 `WindowInsetsCompat` 注入 CSS 变量，Web/CSS 分区处理 header/main/bottom TabBar。
+- T-028 已重设计控制面板按钮：`开/关` 是主控制，`降低亮度 / 增加亮度` 是对称调节组，`读状态 / 读参数` 降级为低层级 `系统读取` 预留入口；5 个按钮 id/action 不变。
+- T-029 已进一步强化 vivo / Capacitor WebView edge-to-edge：native window/decor/content/WebView 非黑背景、top/bottom system-bar paint fallback、DecorView insets 分发且不消费、native px 转 CSS px、Capacitor `SystemBars` 配置和 Web `--edge-*` 变量。
+- T-030 已补齐 T-029 的 edge-to-edge 约束：确认 Capacitor `@capacitor/core/android/cli@8.3.1` 支持 `SystemBars`；删除 WebView no-op insets listener；DecorView listener 不消费且不覆盖 SystemBars parent listener；native paint fallback 放到 content 背后系统栏区域；Web 侧使用 raw px + density + WebView width 做 width-ratio fallback；CSS `--edge-*` 使用 max(native, system, safe-area, env)；`.shell` 左右宽度恢复基础档位，不再被普通 side gesture inset 压缩。
+- T-031 Probe 已在 vivo 真机出现顶部青色、底部绿色，证明 native strip / edge-to-edge 路径可见。
+- T-031 Final 已固定 `TRANSPARENT_EDGE_WITH_STRIPS`，关闭 `EDGE_PROBE_COLORS`，native strip 与 Web/CSS 背景统一为正式浅色，Web 默认 `edge-transparent`，`SystemBars.insetsHandling = "disable"` 继续由 native 主控。
+- 最新正式 APK：`交付物/solar-remote-t031-sideload.apk`；英文路径副本：`C:\solar-apk\solar-remote-t031-sideload.apk`；SHA256 `2CE79E87FDDCE625B537417A91927046C86E4E4863B61EAF0180C3DE90025F3E`；manifest 已确认无 `testOnly`；`apksigner verify` 通过。
+- T-032 已完成 UI 紧凑微调：关闭 header 伪背景层，home 状态提示改为无卡片文字行，`场景` 预留页不再显示空矩形；`设备/场景/我的/具体设备` 标题整体上移；bottom TabBar 保持 `bottom:0` 且内容更贴底；详情页默认点亮 `设备状态`，点击 `控制面板` 会切换选中态。
+- 最新正式 APK：`交付物/solar-remote-t032-sideload.apk`；英文路径副本：`C:\solar-apk\solar-remote-t032-sideload.apk`；SHA256 `861A9E929C97F24E51A4D0B6F6ED93E60ABEFF7925290FA8135B8F1D060A82FA`；manifest 已确认无 `testOnly`；`apksigner verify` 通过。
+- T-033 已完成 T032 后的轻微间距调整：标题 top 从模拟结果 34px 上移到 32px，bottom nav padding-bottom 从 20px 收到 18px，320/360px 左右 padding 从 10px 收到 8px，390px 从 12px 收到 10px；bottom nav 仍 `bottom:0`，详情默认 `设备状态` 未回退。
+- 最新正式 APK：`交付物/solar-remote-t033-sideload.apk`；英文路径副本：`C:\solar-apk\solar-remote-t033-sideload.apk`；SHA256 `45AD1807CCD71BFFEFC964E7A77AF1E5FDA326AF439E1C17E51F303F6E621A4F`；manifest 已确认无 `testOnly`；`apksigner verify` 通过。
 
 ## Verification Baseline
 
-最近一次 T-026 验证通过：
+最近一次 T-033 验证通过：
 
-- `npm.cmd test -- src/app.test.ts`：27 tests passed
-- `npm.cmd test`：5 files / 48 tests passed
+- `npm.cmd test -- src/app.test.ts`：39 tests passed
+- `npm.cmd test`：5 files / 60 tests passed
 - `npm.cmd run build`：passed
 - `npm.cmd run sync`：passed
-- 320/360/390px 本地 Chrome 自动检查：device/profile/scene 无横向溢出，profile 统计 1 行 3 项，profile 场景 1 行 4 项
+- 320/360/390px 本地 Chrome CDP 自动检查：T031 build id 出现在 DOM/window，header 伪背景层为 `display:none`，标题 top 为 32px，bottom nav 到底且 padding-bottom 为 18px，320/360px shell padding 为 8px，390px 为 10px，详情页默认 `设备状态` active
 - `$env:JAVA_HOME='C:\Program Files\Android\Android Studio\jbr'; .\gradlew.bat :app:assembleDebug --project-prop android.injected.testOnly=false`：BUILD SUCCESSFUL
-- `aapt` manifest check：`NO_TEST_ONLY`
+- `aapt` manifest check：无 `testOnly`
 - `apksigner verify --verbose`：Verifies
 
 如果下一步只做文档，不需要重新跑 npm/Gradle。只要改代码、UI、BLE、协议或 Android，必须重新跑相关测试。
@@ -100,9 +112,8 @@
 - T-002 还没有逐条 10 次命令复测记录，目前只知道 5 条 MVP 命令可行性良好；用户已要求先不做。
 - 协议回传规则已确认：只有读状态和读参数回传；默认不要把普通命令改回等待回包。
 - 开/关命令目前按 `0x0A` 指令执行，是否能区分独立开机/关机仍待真机确认。
-- vivo/Android 状态栏渐变真机未通过；如需再改，必须先走 Plan First。
-- T-025/T-026 已再试状态栏/底栏安全区和 UI 密度，后续不要继续凭感觉反复改；先真机判断。
-- 详情页顶部已压缩，锚点滚动是否还需改等待用户反馈。
+- T-033 APK 等待 vivo 复验：顶部内容更靠上，底部 TabBar 更贴底，左右边距更合适，详情页默认点亮 `设备状态`。
+- 详情页锚点滚动落点仍需真机确认；当前只增加默认/切换选中态，没有改变连续页面结构。
 
 ## Do Not Do
 
