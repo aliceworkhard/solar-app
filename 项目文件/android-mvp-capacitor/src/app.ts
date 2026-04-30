@@ -16,12 +16,13 @@ import {
 import { spacedHex } from "./utils/hex";
 import type { DeviceBrief, DeviceStatus, LogEntry } from "./types";
 
-type ViewName = "home" | "control" | "scene" | "profile";
+export type ViewName = "home" | "control" | "scene" | "profile";
 type BottomNavTab = "device" | "scene" | "profile";
 type BackNavigationResult = "home" | "exit";
 type NativeBackAction = "handled" | "exit";
 type SwipeDisconnectState = "closed" | "open";
 type FeedbackTone = "idle" | "pending" | "success" | "error";
+type UiRefreshTask = "status" | "deviceList" | "scanControls";
 type EdgeMode = "transparent" | "color-match" | "visual-fallback";
 type StyleWriter = Pick<CSSStyleDeclaration, "setProperty">;
 type SystemInsetValue = number | string;
@@ -62,6 +63,7 @@ export interface CommandPanelGroup {
 export interface LiveStatusModel {
   caption: string;
   modeLabel: string;
+  modeSummaryLabel: string;
   modeRaw: string;
   batteryType: string;
   workTime: string;
@@ -77,6 +79,45 @@ export interface NearbyDeviceMetrics {
   batteryVoltage: string;
   solarVoltage: string;
   power: string;
+}
+
+export interface ControlModeStripItem {
+  mode: "radar" | "time" | "average";
+  label: string;
+  active: boolean;
+  disabled: boolean;
+  stateLabel: string;
+}
+
+export interface TimeControlHalfHourLabel {
+  unitLabel: string;
+  timeLabel: string;
+  inlineLabel: string;
+}
+
+export interface ControlTouchIntent {
+  startX?: number;
+  startY?: number;
+  endX?: number;
+  endY?: number;
+  canceled?: boolean;
+  now?: number;
+  lastScrollAt?: number;
+}
+
+interface TrackedControlTouchIntent extends ControlTouchIntent {
+  pointerId?: number;
+}
+
+export interface InitialDeviceSyncActions {
+  readStatus: () => Promise<string>;
+  readParams: () => Promise<string>;
+}
+
+export interface InitialDeviceSyncResult {
+  readStatus?: string;
+  readParams?: string;
+  errors: string[];
 }
 
 export interface DiscoveryControlState {
@@ -176,6 +217,10 @@ export const COMMAND_PANEL_GROUPS: CommandPanelGroup[] = [
 ];
 
 export const EDGE_BUILD_ID = "T031-system-bars-final";
+export const TIME_CONTROL_IMPLEMENTED_MODE = "time";
+export const TIME_CONTROL_CURRENT_MODE_TEXT = "时控模式";
+export const TIME_CONTROL_MODE_SUMMARY_TEXT = "时控";
+export const TIME_CONTROL_WRITE_DEBOUNCE_MS = 400;
 export const TIME_CONTROL_EDITOR_MODEL = {
   mode: "time",
   segmentCount: TIME_CONTROL_SEGMENT_COUNT,
@@ -188,6 +233,10 @@ export const TIME_CONTROL_EDITOR_MODEL = {
   maxOutputModel: "high-byte-percent-low-byte-00",
   segmentDurationModel: "half-hour-units-1-to-15",
   modeStripPlacement: "above-time-control-editor",
+  activeMode: TIME_CONTROL_IMPLEMENTED_MODE,
+  segmentEditorModel: "linked-card",
+  writeDebounceMs: TIME_CONTROL_WRITE_DEBOUNCE_MS,
+  writeScheduling: "trailing-debounce",
   longFramePolicy: "mode-02-future-split"
 } as const;
 export const EDGE_MODE_BODY_CLASSES: Record<EdgeMode, string> = {
@@ -202,6 +251,17 @@ export const EDGE_DIAGNOSTIC_DOM_BACKGROUND = {
 } as const;
 export const DEVICE_ASSET_SRC = "/assets/ui/mppt_gray_black_controller_transparent.png";
 export const TARGET_DEVICE_NAME = "AC632N_1";
+export const SUPPORTED_DEVICE_NAMES = [TARGET_DEVICE_NAME, "AC632N-1", "M3240-G", "N3230-U"] as const;
+export const SUPPORTED_DEVICE_LABEL = SUPPORTED_DEVICE_NAMES.join(" / ");
+export const SUPPORTED_SCAN_NAME_PREFIX = "";
+export const CONTROL_TOUCH_GUARD = {
+  maxTapMovePx: 14,
+  maxTapVerticalPx: 12,
+  maxRangeVerticalPx: 18,
+  rangeVerticalDominanceRatio: 1.15,
+  scrollQuietMs: 260
+} as const;
+export const INITIAL_CONNECT_SYNC_COMMANDS = ["readStatus", "readParams"] as const;
 export const DETAIL_SECTION_ANCHORS = {
   status: "deviceStatusSection",
   controls: "controlPanelSection"
@@ -459,6 +519,19 @@ export function shouldStartBackgroundDiscovery(status: DeviceStatus, scanInFligh
   return !scanInFlight && !["connecting", "discovering", "subscribing"].includes(status.connectionState);
 }
 
+export function shouldRenderDeviceListForView(view: ViewName): boolean {
+  return view === "home";
+}
+
+export function shouldRefreshTimeControlEditor(input: TimeControlEditorRefreshInput): boolean {
+  return (
+    input.draftChanged ||
+    input.activeSegmentChanged ||
+    input.previousReady !== input.nextReady ||
+    input.previousTimeControlParams !== input.nextTimeControlParams
+  );
+}
+
 export function resolveDiscoveryControlState(
   discoveryActive: boolean,
   scanInFlight: boolean,
@@ -485,8 +558,66 @@ export function resolveSwipeDisconnectState(deltaX: number, isConnected: boolean
   return isConnected && deltaX <= -SWIPE_DISCONNECT_THRESHOLD_PX ? "open" : "closed";
 }
 
+export function isSupportedDeviceName(name: string): boolean {
+  const normalized = name.trim().toUpperCase();
+  return SUPPORTED_DEVICE_NAMES.some((supportedName) => supportedName.toUpperCase() === normalized);
+}
+
 export function filterSupportedDevices<T extends DeviceBrief>(devices: T[]): T[] {
-  return devices.filter((device) => device.name.trim() === TARGET_DEVICE_NAME);
+  return devices.filter((device) => isSupportedDeviceName(device.name));
+}
+
+function hasFiniteTouchPoints(intent: ControlTouchIntent): boolean {
+  return (
+    Number.isFinite(intent.startX) &&
+    Number.isFinite(intent.startY) &&
+    Number.isFinite(intent.endX) &&
+    Number.isFinite(intent.endY)
+  );
+}
+
+function isInsideScrollQuietWindow(intent: ControlTouchIntent): boolean {
+  const now = intent.now;
+  const lastScrollAt = intent.lastScrollAt;
+  return (
+    Number.isFinite(now) &&
+    Number.isFinite(lastScrollAt) &&
+    Number(lastScrollAt) > 0 &&
+    Number(now) - Number(lastScrollAt) >= 0 &&
+    Number(now) - Number(lastScrollAt) < CONTROL_TOUCH_GUARD.scrollQuietMs
+  );
+}
+
+export function shouldAcceptControlTap(intent?: ControlTouchIntent | null): boolean {
+  if (!intent) {
+    return true;
+  }
+  if (intent.canceled || isInsideScrollQuietWindow(intent)) {
+    return false;
+  }
+  if (!hasFiniteTouchPoints(intent)) {
+    return true;
+  }
+  const deltaX = Math.abs(Number(intent.endX) - Number(intent.startX));
+  const deltaY = Math.abs(Number(intent.endY) - Number(intent.startY));
+  const distance = Math.hypot(deltaX, deltaY);
+  return distance <= CONTROL_TOUCH_GUARD.maxTapMovePx && deltaY <= CONTROL_TOUCH_GUARD.maxTapVerticalPx;
+}
+
+export function shouldAcceptRangeCommit(intent?: ControlTouchIntent | null): boolean {
+  if (!intent) {
+    return true;
+  }
+  if (intent.canceled || isInsideScrollQuietWindow(intent)) {
+    return false;
+  }
+  if (!hasFiniteTouchPoints(intent)) {
+    return true;
+  }
+  const deltaX = Math.abs(Number(intent.endX) - Number(intent.startX));
+  const deltaY = Math.abs(Number(intent.endY) - Number(intent.startY));
+  const verticalDominates = deltaY > deltaX * CONTROL_TOUCH_GUARD.rangeVerticalDominanceRatio;
+  return !(deltaY > CONTROL_TOUCH_GUARD.maxRangeVerticalPx && verticalDominates);
 }
 
 export function shouldOpenControlForConnectedDevice(
@@ -515,6 +646,30 @@ export function shouldAutoConnectSupportedDevice(
   );
 }
 
+export async function requestInitialDeviceSync(
+  actions: InitialDeviceSyncActions,
+  isStillActive: () => boolean
+): Promise<InitialDeviceSyncResult> {
+  const result: InitialDeviceSyncResult = { errors: [] };
+  if (!isStillActive()) {
+    return result;
+  }
+  try {
+    result.readStatus = await actions.readStatus();
+  } catch (error) {
+    result.errors.push(`readStatus:${error instanceof Error ? error.message : String(error)}`);
+  }
+  if (!isStillActive()) {
+    return result;
+  }
+  try {
+    result.readParams = await actions.readParams();
+  } catch (error) {
+    result.errors.push(`readParams:${error instanceof Error ? error.message : String(error)}`);
+  }
+  return result;
+}
+
 function formatFixedUnit(value: number | undefined, digits: number, unit: string): string {
   if (typeof value !== "number" || !Number.isFinite(value)) {
     return "-";
@@ -535,10 +690,32 @@ function formatModeLabel(mode: string): string {
   return mode || "-";
 }
 
+export function createTimeControlModeStripModel(_mode: string): ControlModeStripItem[] {
+  return [
+    { mode: "radar", label: "雷达模式", active: false, disabled: true, stateLabel: "待接入" },
+    { mode: "time", label: "时控模式", active: true, disabled: false, stateLabel: "当前" },
+    { mode: "average", label: "平均模式", active: false, disabled: true, stateLabel: "待接入" }
+  ];
+}
+
+export function createTimeControlHalfHourLabel(value: number): TimeControlHalfHourLabel {
+  const safeValue = Number.isFinite(value) ? Math.round(value) : 0;
+  const units = Math.min(MAX_TOTAL_SEGMENT_HALF_HOURS, Math.max(0, safeValue));
+  const hours = units / 2;
+  const timeLabel = `${Number.isInteger(hours) ? hours.toFixed(0) : hours.toFixed(1)}h`;
+  const unitLabel = `${units}档`;
+  return {
+    unitLabel,
+    timeLabel,
+    inlineLabel: `${unitLabel} ${timeLabel}`
+  };
+}
+
 export function createLiveStatusModel(status: DeviceStatus): LiveStatusModel {
   return {
     caption: "LIVE STATUS",
-    modeLabel: formatModeLabel(status.mode),
+    modeLabel: TIME_CONTROL_CURRENT_MODE_TEXT,
+    modeSummaryLabel: TIME_CONTROL_MODE_SUMMARY_TEXT,
     modeRaw: status.mode || "-",
     batteryType: "磷酸铁锂",
     workTime: formatWorkMinutes(status),
@@ -611,8 +788,23 @@ export function formatSolarVoltage(status: DeviceStatus): string {
 }
 
 export const DISCOVERY_INTERVAL_MS = 5000;
-export const DEVICE_STALE_AFTER_MS = 30000;
-export const DEVICE_FORGET_AFTER_MS = 60000;
+export const BACKGROUND_DISCOVERY_INTERVAL_MS = 3000;
+export const FOREGROUND_DISCOVERY_SCAN_WINDOWS: DiscoveryScanWindows = {
+  quickWindowMs: 1500,
+  fullWindowMs: 4200
+};
+export const BACKGROUND_DISCOVERY_SCAN_WINDOWS: DiscoveryScanWindows = {
+  quickWindowMs: 800,
+  fullWindowMs: 1200
+};
+export const MANUAL_DISCOVERY_SCAN_WINDOWS: DiscoveryScanWindows = {
+  quickWindowMs: 1200,
+  fullWindowMs: 2800
+};
+export const DEVICE_STALE_AFTER_MS = 45000;
+export const DEVICE_FORGET_AFTER_MS = 180000;
+export const DEVICE_RETAIN_SCAN_ROUNDS = 5;
+export const DEVICE_RECENTLY_DISCONNECTED_KEEP_MS = 300000;
 
 export interface DiscoveredDeviceRecord extends DeviceBrief {
   firstSeenAt: number;
@@ -632,6 +824,20 @@ export interface DiscoveryMergeContext {
   recentlyDisconnectedDeviceId?: string;
 }
 
+export interface DiscoveryScanWindows {
+  quickWindowMs: number;
+  fullWindowMs: number;
+}
+
+export interface TimeControlEditorRefreshInput {
+  previousTimeControlParams?: TimeControlParams;
+  nextTimeControlParams?: TimeControlParams;
+  previousReady: boolean;
+  nextReady: boolean;
+  draftChanged: boolean;
+  activeSegmentChanged: boolean;
+}
+
 export function mergeDiscoveryDevices(
   currentDevices: DiscoveredDeviceRecord[],
   incomingDevices: DeviceBrief[],
@@ -646,7 +852,11 @@ export function mergeDiscoveryDevices(
     const isRecentlyDisconnected =
       !isConnected && Boolean(recentlyDisconnectedDeviceId) && current.deviceId.toLowerCase() === recentlyDisconnectedDeviceId;
     const ageMs = context.now - current.lastSeenAt;
-    if (!isConnected && ageMs > DEVICE_FORGET_AFTER_MS) {
+    const missedRounds = Math.max(0, context.scanRound - current.scanRound);
+    const keepByScanRounds = missedRounds <= DEVICE_RETAIN_SCAN_ROUNDS;
+    const keepRecentlyDisconnected =
+      isRecentlyDisconnected && ageMs <= DEVICE_RECENTLY_DISCONNECTED_KEEP_MS;
+    if (!isConnected && !keepRecentlyDisconnected && ageMs > DEVICE_FORGET_AFTER_MS && !keepByScanRounds) {
       continue;
     }
     byId.set(current.deviceId, {
@@ -693,6 +903,34 @@ export function mergeDiscoveryDevices(
   });
 }
 
+export function createDeviceListRenderSignature(
+  devices: DiscoveredDeviceRecord[],
+  activeDeviceId: string,
+  status: DeviceStatus
+): string {
+  if (!devices.length) {
+    return "empty";
+  }
+  return devices
+    .map((device) => {
+      const metrics = createNearbyDeviceMetrics(device.deviceId, activeDeviceId, status);
+      return [
+        device.deviceId,
+        device.name,
+        device.rssi,
+        device.isConnected ? 1 : 0,
+        device.isStale ? 1 : 0,
+        device.isRecentlyDisconnected ? 1 : 0,
+        device.usedFallback ? 1 : 0,
+        metrics.mode,
+        metrics.batteryVoltage,
+        metrics.solarVoltage,
+        metrics.power
+      ].join(":");
+    })
+    .join("|");
+}
+
 export class App {
   private readonly root: HTMLElement;
   private readonly controller: DeviceController;
@@ -704,6 +942,7 @@ export class App {
   private hiddenTapCount = 0;
   private debugVisible = false;
   private discoveryActive = false;
+  private discoveryMode: "foreground" | "background" = "foreground";
   private discoveryScanInFlight = false;
   private autoConnectInFlight = false;
   private initialDiscoveryScheduled = false;
@@ -722,6 +961,15 @@ export class App {
   private timeControlDraft: TimeControlParams;
   private syncedTimeControlParamsRef?: TimeControlParams;
   private activeTimeControlSegmentIndex = 0;
+  private timeControlWriteTimer: ReturnType<typeof setTimeout> | null = null;
+  private timeControlWriteSeq = 0;
+  private readonly controlTouchIntents = new WeakMap<HTMLElement, TrackedControlTouchIntent>();
+  private lastControlScrollAt = 0;
+  private deviceListDirty = true;
+  private deviceListRenderSignature = "";
+  private timeControlEditorDirty = true;
+  private pendingUiRefreshes = new Set<UiRefreshTask>();
+  private uiRefreshFrameId: number | null = null;
 
   constructor(root: HTMLElement, controller: DeviceController) {
     this.root = root;
@@ -735,22 +983,77 @@ export class App {
   start(): void {
     this.installSystemInsetBridge();
     this.installBackNavigation();
+    this.installControlScrollGuard();
     this.render();
     this.controller.onStatusChange((status) => {
+      const previousReady = isControlReady(this.status);
+      const previousTimeControlParams = this.syncedTimeControlParamsRef;
+      let draftChanged = false;
       this.status = status;
       if (status.timeControlParams && status.timeControlParams !== this.syncedTimeControlParamsRef) {
+        this.cancelTimeControlWrite();
         this.timeControlDraft = cloneTimeControlParams(status.timeControlParams);
         this.syncedTimeControlParamsRef = status.timeControlParams;
+        draftChanged = true;
       }
-      this.refreshStatus();
-      this.refreshDeviceList();
+      if (
+        shouldRefreshTimeControlEditor({
+          previousTimeControlParams,
+          nextTimeControlParams: this.syncedTimeControlParamsRef,
+          previousReady,
+          nextReady: isControlReady(this.status),
+          draftChanged,
+          activeSegmentChanged: false
+        })
+      ) {
+        this.timeControlEditorDirty = true;
+      }
+      this.queueUiRefresh("status", "deviceList");
       this.syncStatusPolling();
     });
     this.controller.onLogChange((logs) => {
       this.logs = logs;
-      this.refreshLogs();
+      if (this.debugVisible) {
+        this.refreshLogs();
+      }
     });
     this.scheduleInitialDiscovery();
+  }
+
+  private queueUiRefresh(...tasks: UiRefreshTask[]): void {
+    for (const task of tasks) {
+      this.pendingUiRefreshes.add(task);
+    }
+    if (this.uiRefreshFrameId != null) {
+      return;
+    }
+    const flush = () => {
+      this.uiRefreshFrameId = null;
+      this.flushQueuedUiRefreshes();
+    };
+    if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
+      this.uiRefreshFrameId = window.requestAnimationFrame(flush);
+      return;
+    }
+    this.uiRefreshFrameId = Number(setTimeout(flush, 0));
+  }
+
+  private flushQueuedUiRefreshes(): void {
+    if (!this.root.childElementCount) {
+      this.pendingUiRefreshes.clear();
+      return;
+    }
+    const tasks = new Set(this.pendingUiRefreshes);
+    this.pendingUiRefreshes.clear();
+    if (tasks.has("status")) {
+      this.refreshStatus();
+    }
+    if (tasks.has("deviceList")) {
+      this.refreshDeviceList();
+    }
+    if (tasks.has("scanControls")) {
+      this.refreshScanControls();
+    }
   }
 
   private render(): void {
@@ -818,7 +1121,7 @@ export class App {
                 <div class="live-status-time-grid">
                   <div class="live-status-mini">
                     <span><i class="metric-icon amber" aria-hidden="true"></i>模式</span>
-                    <strong id="liveModeSummaryValue">${liveStatus.modeLabel}</strong>
+                    <strong id="liveModeSummaryValue">${liveStatus.modeSummaryLabel}</strong>
                   </div>
                   <div class="live-status-mini">
                     <span><i class="metric-icon slate" aria-hidden="true"></i>太阳能电压</span>
@@ -844,11 +1147,7 @@ export class App {
                   <span class="write-chip">写入方式：<b id="writeTypeValue">-</b></span>
                 </div>
                 ${this.renderCommandPanel()}
-                <div class="seg readonly control-mode-strip" id="modeSeg" aria-label="模式展示">
-                  <button data-mode="radar" class="seg-btn" type="button">雷达模式</button>
-                  <button data-mode="time" class="seg-btn" type="button">时控模式</button>
-                  <button data-mode="average" class="seg-btn" type="button">平均模式</button>
-                </div>
+                ${this.renderControlModeStrip()}
                 ${this.renderTimeControlEditor()}
                 <div class="result result-live" id="resultArea" hidden></div>
               </article>
@@ -883,6 +1182,9 @@ export class App {
       </div>
     `;
 
+    this.deviceListDirty = true;
+    this.deviceListRenderSignature = "";
+    this.timeControlEditorDirty = true;
     this.bindEvents();
     this.refreshStatus();
     this.refreshDeviceList();
@@ -918,6 +1220,28 @@ export class App {
       >
         ${label}
       </button>
+    `;
+  }
+
+  private renderControlModeStrip(): string {
+    return `
+      <div class="seg readonly control-mode-strip" id="modeSeg" aria-label="模式展示">
+        ${createTimeControlModeStripModel(this.status.mode)
+          .map(
+            (item) => `
+              <button
+                data-mode="${item.mode}"
+                class="seg-btn ${item.active ? "active" : ""} ${item.disabled ? "disabled" : ""}"
+                type="button"
+                aria-disabled="${item.disabled}"
+              >
+                <span>${item.label}</span>
+                <small>${item.stateLabel}</small>
+              </button>
+            `
+          )
+          .join("")}
+      </div>
     `;
   }
 
@@ -1115,40 +1439,49 @@ export class App {
           <input id="timeMaxPwmRange" data-time-control type="range" min="0" max="255" step="1" value="${params.maxOutputByte}" ${disabled} />
         </label>
 
-        <div class="time-segment-tabs" aria-label="时控时段">
-          ${params.segments
-            .map(
-              (segment, index) => `
-                <button
-                  class="time-segment-tab ${index === this.activeTimeControlSegmentIndex ? "active" : ""}"
-                  data-time-segment="${index}"
-                  type="button"
-                >
-                  <span>${index + 1}</span>
-                  <b>${this.formatTimeControlHalfHours(segment.durationHalfHours)}</b>
-                </button>
-              `
-            )
-            .join("")}
+        <div class="time-segment-editor-card" id="timeSegmentEditorCard">
+          <div class="time-segment-editor-head">
+            <span>时段设置</span>
+            <strong id="activeTimeSegmentTitle">正在编辑：时段 ${this.activeTimeControlSegmentIndex + 1}</strong>
+          </div>
+          <div class="time-segment-tabs" aria-label="时控时段">
+            ${params.segments
+              .map(
+                (segment, index) => `
+                  <button
+                    class="time-segment-tab ${index === this.activeTimeControlSegmentIndex ? "active" : ""}"
+                    data-time-segment="${index}"
+                    type="button"
+                  >
+                    <span class="time-segment-index">${index + 1}</span>
+                    ${this.renderTimeControlHalfHourLabel(segment.durationHalfHours)}
+                  </button>
+                `
+              )
+              .join("")}
+          </div>
+
+          <div class="time-control-range-grid linked-segment-controls">
+            <label class="time-slider-block linked" for="timeSegmentDurationRange">
+              <span>
+                当前时段时长
+                ${this.renderTimeControlHalfHourLabel(activeSegment.durationHalfHours, "timeSegmentDurationValue")}
+              </span>
+              <input id="timeSegmentDurationRange" data-time-control type="range" min="${TIME_CONTROL_SEGMENT_MIN_HALF_HOURS}" max="${activeMaxDuration}" step="1" value="${
+                activeSegment.durationHalfHours
+              }" ${disabled} />
+            </label>
+            <label class="time-slider-block linked" for="timeSegmentPowerRange">
+              <span>
+                当前时段功率
+                <b id="timeSegmentPowerValue">${activeSegment.powerPercent}%</b>
+              </span>
+              <input id="timeSegmentPowerRange" data-time-control type="range" min="0" max="100" step="5" value="${activeSegment.powerPercent}" ${disabled} />
+            </label>
+          </div>
         </div>
 
         <div class="time-control-range-grid">
-          <label class="time-slider-block" for="timeSegmentDurationRange">
-            <span>
-              当前时段时长
-              <b id="timeSegmentDurationValue">${this.formatTimeControlHalfHours(activeSegment.durationHalfHours)}</b>
-            </span>
-            <input id="timeSegmentDurationRange" data-time-control type="range" min="${TIME_CONTROL_SEGMENT_MIN_HALF_HOURS}" max="${activeMaxDuration}" step="1" value="${
-              activeSegment.durationHalfHours
-            }" ${disabled} />
-          </label>
-          <label class="time-slider-block" for="timeSegmentPowerRange">
-            <span>
-              当前时段功率
-              <b id="timeSegmentPowerValue">${activeSegment.powerPercent}%</b>
-            </span>
-            <input id="timeSegmentPowerRange" data-time-control type="range" min="0" max="100" step="5" value="${activeSegment.powerPercent}" ${disabled} />
-          </label>
           <label class="time-slider-block" for="timeMorningDurationRange">
             <span>
               晨亮时长
@@ -1227,6 +1560,99 @@ export class App {
     return hints[command.action] ?? command.description;
   }
 
+  private installControlScrollGuard(): void {
+    const markScroll = () => {
+      this.lastControlScrollAt = Date.now();
+    };
+    this.root.addEventListener("scroll", markScroll, { capture: true, passive: true });
+    if (typeof window !== "undefined") {
+      window.addEventListener("scroll", markScroll, { passive: true });
+    }
+  }
+
+  private bindGuardedButton(button: HTMLElement, action: () => void): void {
+    this.bindControlPointerGuard(button);
+    button.addEventListener("click", (event) => {
+      if (!this.consumeControlTap(button)) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+      action();
+    });
+  }
+
+  private bindControlPointerGuard(element: HTMLElement): void {
+    element.addEventListener("pointerdown", (event) => {
+      this.controlTouchIntents.set(element, {
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        endX: event.clientX,
+        endY: event.clientY,
+        now: Date.now(),
+        lastScrollAt: this.lastControlScrollAt
+      });
+    });
+    element.addEventListener("pointermove", (event) => {
+      const intent = this.controlTouchIntents.get(element);
+      if (!intent || (intent.pointerId != null && intent.pointerId !== event.pointerId)) {
+        return;
+      }
+      intent.endX = event.clientX;
+      intent.endY = event.clientY;
+      intent.now = Date.now();
+      intent.lastScrollAt = Math.max(intent.lastScrollAt ?? 0, this.lastControlScrollAt);
+    });
+    element.addEventListener("pointerup", (event) => {
+      const intent = this.controlTouchIntents.get(element);
+      if (!intent || (intent.pointerId != null && intent.pointerId !== event.pointerId)) {
+        return;
+      }
+      intent.endX = event.clientX;
+      intent.endY = event.clientY;
+      intent.now = Date.now();
+      intent.lastScrollAt = Math.max(intent.lastScrollAt ?? 0, this.lastControlScrollAt);
+    });
+    element.addEventListener("pointercancel", () => {
+      const intent = this.controlTouchIntents.get(element) ?? {};
+      this.controlTouchIntents.set(element, {
+        ...intent,
+        canceled: true,
+        now: Date.now(),
+        lastScrollAt: Math.max(intent.lastScrollAt ?? 0, this.lastControlScrollAt)
+      });
+    });
+  }
+
+  private controlTouchIntent(element: HTMLElement): ControlTouchIntent | undefined {
+    const intent = this.controlTouchIntents.get(element);
+    if (!intent) {
+      return undefined;
+    }
+    return {
+      startX: intent.startX,
+      startY: intent.startY,
+      endX: intent.endX ?? intent.startX,
+      endY: intent.endY ?? intent.startY,
+      canceled: intent.canceled,
+      now: Date.now(),
+      lastScrollAt: Math.max(intent.lastScrollAt ?? 0, this.lastControlScrollAt)
+    };
+  }
+
+  private consumeControlTap(element: HTMLElement): boolean {
+    const accepted = shouldAcceptControlTap(this.controlTouchIntent(element));
+    this.controlTouchIntents.delete(element);
+    return accepted;
+  }
+
+  private consumeRangeCommit(element: HTMLElement): boolean {
+    const accepted = shouldAcceptRangeCommit(this.controlTouchIntent(element));
+    this.controlTouchIntents.delete(element);
+    return accepted;
+  }
+
   private bindEvents(): void {
     this.byId("scanBtn").addEventListener("click", () => {
       void this.toggleContinuousDiscovery();
@@ -1253,7 +1679,7 @@ export class App {
       });
     });
     for (const command of BUSINESS_COMMANDS) {
-      this.byId(command.id).addEventListener("click", () => {
+      this.bindGuardedButton(this.byId(command.id), () => {
         void this.handleAction(command, () => this.controller[command.action]());
       });
     }
@@ -1268,17 +1694,12 @@ export class App {
     });
     this.byId("rawSendBtn").addEventListener("click", () => void this.handleRawSend());
 
-    const modeButtons = this.root.querySelectorAll<HTMLButtonElement>("#modeSeg .seg-btn");
-    modeButtons.forEach((button) => {
-      if (button.dataset.mode === this.status.mode) {
-        button.classList.add("active");
-      }
-    });
+    this.refreshControlModeStrip();
   }
 
   private bindTimeControlEvents(): void {
     this.root.querySelectorAll<HTMLButtonElement>("[data-time-step]").forEach((button) => {
-      button.addEventListener("click", () => {
+      this.bindGuardedButton(button, () => {
         const change = this.resolveTimeControlStepChange(button.dataset.kind, Number(button.dataset.delta || 0));
         if (change) {
           void this.commitTimeControlChange(change);
@@ -1287,7 +1708,7 @@ export class App {
     });
 
     this.root.querySelectorAll<HTMLButtonElement>("[data-time-segment]").forEach((button) => {
-      button.addEventListener("click", () => {
+      this.bindGuardedButton(button, () => {
         const index = Number(button.dataset.timeSegment);
         if (!Number.isInteger(index) || index < 0 || index >= TIME_CONTROL_SEGMENT_COUNT) {
           return;
@@ -1317,10 +1738,15 @@ export class App {
     if (!input) {
       return;
     }
+    this.bindControlPointerGuard(input);
     input.addEventListener("input", () => {
       this.updateTimeControlRangePreview(inputId, Number(input.value));
     });
     input.addEventListener("change", () => {
+      if (!this.consumeRangeCommit(input)) {
+        this.refreshTimeControlEditor();
+        return;
+      }
       void this.commitTimeControlChange(toChange(Number(input.value)));
     });
   }
@@ -1361,6 +1787,7 @@ export class App {
       return;
     }
     this.discoveryActive = true;
+    this.discoveryMode = "foreground";
     this.discoveryRound = 0;
     this.refreshScanControls();
     void this.runDiscoveryRound();
@@ -1368,6 +1795,7 @@ export class App {
 
   private stopContinuousDiscovery(message?: string): void {
     this.discoveryActive = false;
+    this.discoveryMode = "foreground";
     this.invalidateScanOperation();
     if (this.discoveryTimer) {
       clearTimeout(this.discoveryTimer);
@@ -1377,6 +1805,31 @@ export class App {
     if (message) {
       this.setResult(message, "success");
     }
+  }
+
+  private pauseDiscoveryForConnection(message?: string): void {
+    this.invalidateScanOperation();
+    if (this.discoveryTimer) {
+      clearTimeout(this.discoveryTimer);
+      this.discoveryTimer = null;
+    }
+    this.discoveryActive = true;
+    this.discoveryMode = "background";
+    this.refreshScanControls();
+    if (message) {
+      this.setResult(message, "pending");
+    }
+  }
+
+  private startBackgroundDiscovery(): void {
+    this.discoveryActive = true;
+    this.discoveryMode = "background";
+    this.refreshScanControls();
+    this.scheduleNextDiscoveryRound();
+  }
+
+  private isQuietDiscovery(): boolean {
+    return this.discoveryMode === "background";
   }
 
   private startScanOperation(): number {
@@ -1424,14 +1877,21 @@ export class App {
     this.discoveryRound += 1;
     const round = this.discoveryRound;
     let roundUsedFallback = false;
+    const quiet = this.isQuietDiscovery();
+    const scanWindows = quiet ? BACKGROUND_DISCOVERY_SCAN_WINDOWS : FOREGROUND_DISCOVERY_SCAN_WINDOWS;
     this.refreshScanControls();
 
     try {
-      this.setResult(`持续发现第 ${round} 轮...`, "pending");
-      this.refreshDeviceList();
+      if (!quiet) {
+        this.setResult(`持续发现第 ${round} 轮...`, "pending");
+        this.refreshDeviceList();
+      } else {
+        this.deviceListDirty = true;
+      }
       const result = await this.controller.scan({
-        quickWindowMs: 1500,
-        fullWindowMs: 4200,
+        namePrefix: SUPPORTED_SCAN_NAME_PREFIX,
+        quickWindowMs: scanWindows.quickWindowMs,
+        fullWindowMs: scanWindows.fullWindowMs,
         allowFallbackNoPrefix: true,
         onProgress: (devices, meta) => {
           if (!this.isActiveScanOperation(operationId)) {
@@ -1444,8 +1904,15 @@ export class App {
             scanRound: round,
             usedFallback: roundUsedFallback
           });
-          this.refreshDeviceList();
-          if (meta.completed) {
+          if (quiet) {
+            this.deviceListDirty = true;
+            if (meta.completed) {
+              this.queueUiRefresh("deviceList");
+            }
+          } else {
+            this.refreshDeviceList();
+          }
+          if (!quiet && meta.completed) {
             this.setResult(
               `第 ${round} 轮完成：当前列表 ${this.devices.length} 台${meta.usedFallbackNoPrefix ? "（已触发无前缀补扫）" : ""}`,
               "success"
@@ -1462,13 +1929,20 @@ export class App {
         scanRound: round,
         usedFallback: roundUsedFallback
       });
-      this.refreshDeviceList();
-      const didAutoConnect = await this.autoConnectSupportedDevice(this.devices, `发现 ${TARGET_DEVICE_NAME}，正在自动连接`);
+      if (quiet) {
+        this.deviceListDirty = true;
+        this.queueUiRefresh("deviceList");
+      } else {
+        this.refreshDeviceList();
+      }
+      const didAutoConnect = await this.autoConnectSupportedDevice(this.devices, `发现目标设备，正在自动连接`);
       if (!didAutoConnect) {
-        this.setResult(`第 ${round} 轮完成：当前列表 ${this.devices.length} 台`, "success");
+        if (!quiet) {
+          this.setResult(`第 ${round} 轮完成：当前列表 ${this.devices.length} 台`, "success");
+        }
       }
     } catch (error) {
-      if (this.isActiveScanOperation(operationId)) {
+      if (this.isActiveScanOperation(operationId) && !quiet) {
         this.setResult(`持续发现失败：${this.errorMessage(error)}`, "error");
       }
     } finally {
@@ -1490,7 +1964,7 @@ export class App {
     this.discoveryTimer = setTimeout(() => {
       this.discoveryTimer = null;
       void this.runDiscoveryRound();
-    }, DISCOVERY_INTERVAL_MS);
+    }, this.discoveryMode === "background" ? BACKGROUND_DISCOVERY_INTERVAL_MS : DISCOVERY_INTERVAL_MS);
   }
 
   private refreshDeviceDiscovery(): void {
@@ -1512,15 +1986,16 @@ export class App {
     const round = this.discoveryRound;
     this.refreshScanControls();
     this.setResult(
-      this.status.connected ? "正在后台刷新附近设备，当前连接保持可用" : `正在后台搜索 ${TARGET_DEVICE_NAME}...`,
+      this.status.connected ? "正在后台刷新附近设备，当前连接保持可用" : `正在后台搜索目标设备...`,
       "pending"
     );
     this.refreshDeviceList();
 
     void this.controller
       .scan({
-        quickWindowMs: 1200,
-        fullWindowMs: 2800,
+        namePrefix: SUPPORTED_SCAN_NAME_PREFIX,
+        quickWindowMs: MANUAL_DISCOVERY_SCAN_WINDOWS.quickWindowMs,
+        fullWindowMs: MANUAL_DISCOVERY_SCAN_WINDOWS.fullWindowMs,
         allowFallbackNoPrefix: true,
         onProgress: (devices, meta) => {
           if (!this.isActiveScanOperation(operationId)) {
@@ -1533,7 +2008,7 @@ export class App {
             usedFallback: meta.usedFallbackNoPrefix
           });
           this.refreshDeviceList();
-          void this.autoConnectSupportedDevice(this.devices, `发现 ${TARGET_DEVICE_NAME}，正在自动连接`);
+          void this.autoConnectSupportedDevice(this.devices, "发现目标设备，正在自动连接");
         }
       })
       .then(async (devices) => {
@@ -1549,7 +2024,7 @@ export class App {
         this.refreshDeviceList();
         const didAutoConnect = await this.autoConnectSupportedDevice(
           this.devices,
-          `发现 ${TARGET_DEVICE_NAME}，正在自动连接`
+          "发现目标设备，正在自动连接"
         );
         if (!didAutoConnect) {
           this.setResult(
@@ -1603,7 +2078,7 @@ export class App {
       return false;
     }
     this.autoConnectInFlight = true;
-    this.stopContinuousDiscovery(message);
+    this.pauseDiscoveryForConnection(message);
     try {
       await this.connectDevice(target);
       return true;
@@ -1635,6 +2110,7 @@ export class App {
       this.refreshUuidSelectors();
       this.requestInitialStatusRefresh(operationId);
       this.syncStatusPolling();
+      this.startBackgroundDiscovery();
     } catch (error) {
       if (this.isActiveConnectOperation(operationId)) {
         this.activeDeviceId = "";
@@ -1648,7 +2124,6 @@ export class App {
   private async disconnectDevice(): Promise<void> {
     const disconnectedDeviceId = this.activeDeviceId;
     try {
-      this.stopContinuousDiscovery();
       this.invalidateScanOperation();
       this.invalidateConnectOperation();
       await this.controller.disconnect();
@@ -1659,6 +2134,7 @@ export class App {
       this.refreshStatus();
       this.refreshDeviceList();
       this.refreshUuidSelectors();
+      this.startBackgroundDiscovery();
     } catch (error) {
       this.setResult(`断开失败：${this.errorMessage(error)}`, "error");
     }
@@ -1697,13 +2173,59 @@ export class App {
       const result = applyTimeControlChange(this.timeControlDraft, change);
       this.timeControlDraft = result.params;
       this.refreshTimeControlEditor();
-      this.setResult("时控参数整包发送中...", "pending");
-      const message = await this.controller.writeTimeControlParams(this.timeControlDraft);
-      this.setResult(`时控参数整包已发送：${message}`, "success");
+      this.scheduleTimeControlWrite();
     } catch (error) {
       this.refreshTimeControlEditor();
       this.setResult(`时控参数失败：${this.errorMessage(error)}`, "error");
     }
+  }
+
+  private scheduleTimeControlWrite(): void {
+    if (this.timeControlWriteTimer) {
+      clearTimeout(this.timeControlWriteTimer);
+      this.timeControlWriteTimer = null;
+    }
+    const writeSeq = ++this.timeControlWriteSeq;
+    this.setTextIfPresent("timeControlSyncMeta", "准备发送...");
+    this.setResult("时控参数已更新，准备发送整包...", "pending");
+    this.timeControlWriteTimer = setTimeout(() => {
+      this.timeControlWriteTimer = null;
+      void this.flushTimeControlWrite(writeSeq);
+    }, TIME_CONTROL_WRITE_DEBOUNCE_MS);
+  }
+
+  private async flushTimeControlWrite(writeSeq: number): Promise<void> {
+    if (writeSeq !== this.timeControlWriteSeq) {
+      return;
+    }
+    if (!isControlReady(this.status)) {
+      this.refreshTimeControlEditor();
+      this.setResult("设备未就绪，时控参数未发送", "error");
+      return;
+    }
+    const params = cloneTimeControlParams(this.timeControlDraft);
+    try {
+      this.setTextIfPresent("timeControlSyncMeta", "发送中...");
+      this.setResult("时控参数整包发送中...", "pending");
+      const message = await this.controller.writeTimeControlParams(params);
+      if (writeSeq === this.timeControlWriteSeq) {
+        this.setTextIfPresent("timeControlSyncMeta", "已发送");
+        this.setResult(`时控参数整包已发送：${message}`, "success");
+      }
+    } catch (error) {
+      if (writeSeq === this.timeControlWriteSeq) {
+        this.refreshTimeControlEditor();
+        this.setResult(`时控参数失败：${this.errorMessage(error)}`, "error");
+      }
+    }
+  }
+
+  private cancelTimeControlWrite(): void {
+    if (this.timeControlWriteTimer) {
+      clearTimeout(this.timeControlWriteTimer);
+      this.timeControlWriteTimer = null;
+    }
+    this.timeControlWriteSeq += 1;
   }
 
   private async handleRawSend(): Promise<void> {
@@ -1742,10 +2264,19 @@ export class App {
   }
 
   private refreshDeviceList(): void {
-    const list = this.byId("deviceList");
     this.devices = filterSupportedDevices(this.devices);
+    if (!shouldRenderDeviceListForView(this.view)) {
+      this.deviceListDirty = true;
+      return;
+    }
+    const list = this.byId("deviceList");
     if (!this.devices.length) {
-      list.innerHTML = `<div class="device-empty">未发现 ${TARGET_DEVICE_NAME}，点击右上角 + 或刷新重新搜索</div>`;
+      if (!this.deviceListDirty && this.deviceListRenderSignature === "empty") {
+        return;
+      }
+      this.deviceListRenderSignature = "empty";
+      this.deviceListDirty = false;
+      list.innerHTML = `<div class="device-empty">未发现目标设备（${SUPPORTED_DEVICE_LABEL}），点击右上角 + 或刷新重新搜索</div>`;
       return;
     }
     this.mergeSupportedDevices([], {
@@ -1754,6 +2285,12 @@ export class App {
       scanRound: this.discoveryRound,
       usedFallback: false
     });
+    const signature = `${createDeviceListRenderSignature(this.devices, this.activeDeviceId, this.status)}|swipe=${this.swipedDeviceId}`;
+    if (!this.deviceListDirty && signature === this.deviceListRenderSignature) {
+      return;
+    }
+    this.deviceListRenderSignature = signature;
+    this.deviceListDirty = false;
     list.innerHTML = this.devices
       .map((device, index) => {
         const metrics = createNearbyDeviceMetrics(device.deviceId, this.activeDeviceId, this.status);
@@ -1903,7 +2440,8 @@ export class App {
     this.setTextIfPresent("timeLightDelayValue", `${params.lightDelaySeconds}s`);
     this.setTextIfPresent("timeSensitivityValue", this.formatTimeControlSensitivity(params.sensitivity));
     this.setTextIfPresent("timeMaxPwmValue", this.formatTimeControlMaxOutput(params.maxOutputByte));
-    this.setTextIfPresent("timeSegmentDurationValue", this.formatTimeControlHalfHours(activeSegment.durationHalfHours));
+    this.setTextIfPresent("activeTimeSegmentTitle", `正在编辑：时段 ${this.activeTimeControlSegmentIndex + 1}`);
+    this.setTimeControlHalfHourLabel("timeSegmentDurationValue", activeSegment.durationHalfHours);
     this.setTextIfPresent("timeSegmentPowerValue", `${activeSegment.powerPercent}%`);
     this.setTextIfPresent("timeMorningDurationValue", this.formatTimeControlMinutes(params.morningDurationMinutes));
     this.setTextIfPresent("timeMorningPowerValue", `${params.morningPowerPercent}%`);
@@ -1928,9 +2466,9 @@ export class App {
       const segment = params.segments[index];
       button.classList.toggle("active", index === this.activeTimeControlSegmentIndex);
       if (segment) {
-        const duration = button.querySelector("b");
+        const duration = button.querySelector<HTMLElement>(".time-half-hour-label");
         if (duration) {
-          duration.textContent = this.formatTimeControlHalfHours(segment.durationHalfHours);
+          duration.innerHTML = this.renderTimeControlHalfHourLabelContent(segment.durationHalfHours);
         }
       }
     });
@@ -1938,6 +2476,7 @@ export class App {
     this.root.querySelectorAll<HTMLInputElement | HTMLButtonElement>("[data-time-control]").forEach((control) => {
       control.disabled = !ready;
     });
+    this.timeControlEditorDirty = false;
   }
 
   private setTimeRangeValue(inputId: string, value: number, max?: number): void {
@@ -1955,10 +2494,11 @@ export class App {
     if (!Number.isFinite(value)) {
       return;
     }
+    this.setTextIfPresent("timeControlSyncMeta", "松手后发送");
     if (inputId === "timeMaxPwmRange") {
       this.setTextIfPresent("timeMaxPwmValue", this.formatTimeControlMaxOutput(value));
     } else if (inputId === "timeSegmentDurationRange") {
-      this.setTextIfPresent("timeSegmentDurationValue", this.formatTimeControlHalfHours(value));
+      this.setTimeControlHalfHourLabel("timeSegmentDurationValue", value);
     } else if (inputId === "timeSegmentPowerRange") {
       this.setTextIfPresent("timeSegmentPowerValue", `${value}%`);
     } else if (inputId === "timeMorningDurationRange") {
@@ -1976,7 +2516,7 @@ export class App {
           (segment, index) => `
             <span>
               ${index + 1}段
-              <b>${this.formatTimeControlHalfHours(segment.durationHalfHours)} / ${segment.powerPercent}%</b>
+              <b>${this.formatTimeControlHalfHours(segment.durationHalfHours)} · ${segment.powerPercent}%</b>
             </span>
           `
         )
@@ -2025,9 +2565,24 @@ export class App {
   }
 
   private formatTimeControlHalfHours(value: number): string {
-    const units = this.clampTimeValue(value, 0, MAX_TOTAL_SEGMENT_HALF_HOURS);
-    const minutes = units * 30;
-    return `${units}档 / ${this.formatTimeControlMinutes(minutes)}`;
+    return createTimeControlHalfHourLabel(value).inlineLabel;
+  }
+
+  private renderTimeControlHalfHourLabel(value: number, id?: string): string {
+    const idAttr = id ? ` id="${id}"` : "";
+    return `<b${idAttr} class="time-half-hour-label">${this.renderTimeControlHalfHourLabelContent(value)}</b>`;
+  }
+
+  private renderTimeControlHalfHourLabelContent(value: number): string {
+    const label = createTimeControlHalfHourLabel(value);
+    return `<span>${label.unitLabel}</span><small>${label.timeLabel}</small>`;
+  }
+
+  private setTimeControlHalfHourLabel(id: string, value: number): void {
+    const node = this.root.querySelector<HTMLElement>(`#${id}`);
+    if (node) {
+      node.innerHTML = this.renderTimeControlHalfHourLabelContent(value);
+    }
   }
 
   private formatTimeControlMaxOutput(value: number): string {
@@ -2087,7 +2642,7 @@ export class App {
     this.byId("liveBatteryTypeValue").textContent = liveStatus.batteryType;
     this.byId("liveBatteryVoltageValue").textContent = liveStatus.batteryVoltage;
     this.byId("liveWorkTimeValue").textContent = liveStatus.workTime;
-    this.byId("liveModeSummaryValue").textContent = liveStatus.modeLabel;
+    this.byId("liveModeSummaryValue").textContent = liveStatus.modeSummaryLabel;
     this.byId("liveSolarVoltageValue").textContent = liveStatus.solarVoltage;
     this.byId("controlPowerValue").textContent = liveStatus.brightness;
     this.byId("controlLoadCurrentValue").textContent = liveStatus.loadCurrent;
@@ -2096,16 +2651,33 @@ export class App {
     this.byId("liveDeviceNameValue").textContent = activeDeviceName;
     this.byId("lastUpdatedValue").textContent = lastUpdatedText;
     this.byId("writeTypeValue").textContent = this.controller.getWriteType();
-    const modeButtons = this.root.querySelectorAll<HTMLButtonElement>("#modeSeg .seg-btn");
-    modeButtons.forEach((button) => {
-      button.classList.toggle("active", button.dataset.mode === this.status.mode);
-    });
+    this.refreshControlModeStrip();
     const controlButtons = [...BUSINESS_COMMANDS.map((command) => command.id), "rawSendBtn"];
     for (const id of controlButtons) {
       (this.byId(id) as HTMLButtonElement).disabled = !ready;
     }
-    this.refreshTimeControlEditor();
+    if (this.timeControlEditorDirty) {
+      this.refreshTimeControlEditor();
+    }
     this.refreshScanControls();
+  }
+
+  private refreshControlModeStrip(): void {
+    const items = createTimeControlModeStripModel(this.status.mode);
+    const byMode = new Map(items.map((item) => [item.mode, item]));
+    this.root.querySelectorAll<HTMLButtonElement>("#modeSeg .seg-btn").forEach((button) => {
+      const item = byMode.get(button.dataset.mode as ControlModeStripItem["mode"]);
+      if (!item) {
+        return;
+      }
+      button.classList.toggle("active", item.active);
+      button.classList.toggle("disabled", item.disabled);
+      button.setAttribute("aria-disabled", String(item.disabled));
+      const state = button.querySelector("small");
+      if (state) {
+        state.textContent = item.stateLabel;
+      }
+    });
   }
 
   private refreshLogs(): void {
@@ -2212,7 +2784,9 @@ export class App {
   }
 
   private openControlPage(message?: string, pushHistory = true): void {
-    this.stopContinuousDiscovery(message);
+    if (message) {
+      this.setResult(message, "success");
+    }
     this.view = "control";
     this.activeDetailSection = DEFAULT_DETAIL_SECTION;
     if (pushHistory && typeof window !== "undefined" && window.history.state?.solarRemoteView !== "control") {
@@ -2313,16 +2887,29 @@ export class App {
   }
 
   private requestInitialStatusRefresh(operationId: number): void {
-    void this.controller
-      .readStatus()
-      .then((message) => {
+    void requestInitialDeviceSync(
+      {
+        readStatus: () => this.controller.readStatus(),
+        readParams: () => this.controller.readParams()
+      },
+      () => this.isActiveConnectOperation(operationId)
+    )
+      .then((result) => {
         if (this.isActiveConnectOperation(operationId)) {
-          this.setResult(`连接成功，已发送读状态：${message}`, "success");
+          const sent = [
+            result.readStatus ? "读状态" : "",
+            result.readParams ? "读参数" : ""
+          ].filter(Boolean);
+          if (result.errors.length) {
+            this.setResult(`连接成功，初始同步部分失败：${result.errors.join("；")}`, "error");
+            return;
+          }
+          this.setResult(`连接成功，已请求同步：${sent.join(" + ")}`, "success");
         }
       })
       .catch((error) => {
         if (this.isActiveConnectOperation(operationId)) {
-          this.setResult(`连接成功，但读状态发送失败：${this.errorMessage(error)}`, "error");
+          this.setResult(`连接成功，但初始同步失败：${this.errorMessage(error)}`, "error");
         }
       });
   }

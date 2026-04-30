@@ -47,6 +47,7 @@ type PendingAnyResolver = {
 };
 
 export interface ScanOptions {
+  namePrefix?: string;
   quickWindowMs?: number;
   fullWindowMs?: number;
   allowFallbackNoPrefix?: boolean;
@@ -133,7 +134,7 @@ export class DeviceController {
 
     try {
       const devices = await this.ble.scan({
-        namePrefix: PROFILE.namePrefix,
+        namePrefix: options.namePrefix ?? PROFILE.namePrefix,
         quickWindowMs,
         fullWindowMs,
         allowFallbackNoPrefix

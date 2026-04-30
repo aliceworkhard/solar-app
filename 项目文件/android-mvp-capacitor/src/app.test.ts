@@ -2,11 +2,17 @@ import { describe, expect, it } from "vitest";
 import {
   BOTTOM_NAV_ITEMS,
   BUSINESS_COMMANDS,
+  BACKGROUND_DISCOVERY_INTERVAL_MS,
+  BACKGROUND_DISCOVERY_SCAN_WINDOWS,
   COMMAND_PANEL_GROUPS,
   CONTENT_SAFE_INSET_CSS_VARS,
+  CONTROL_TOUCH_GUARD,
   DEFAULT_DETAIL_SECTION,
   DETAIL_SECTION_ANCHORS,
   DEVICE_ASSET_SRC,
+  DEVICE_FORGET_AFTER_MS,
+  DEVICE_RETAIN_SCAN_ROUNDS,
+  DEVICE_RECENTLY_DISCONNECTED_KEEP_MS,
   DEVICE_STALE_AFTER_MS,
   DISCOVERY_INTERVAL_MS,
   EDGE_BUILD_ID,
@@ -18,16 +24,25 @@ import {
   PROFILE_PAGE_COPY,
   REFERENCE_UI_CHROME,
   REFERENCE_UI_COPY,
+  SUPPORTED_DEVICE_LABEL,
+  SUPPORTED_DEVICE_NAMES,
   SYSTEM_INSET_CSS_VARS,
+  INITIAL_CONNECT_SYNC_COMMANDS,
   STATUS_POLL_INTERVAL_MS,
   SWIPE_DISCONNECT_ACTION_WIDTH_PX,
   SWIPE_DISCONNECT_THRESHOLD_PX,
   TARGET_DEVICE_NAME,
+  TIME_CONTROL_CURRENT_MODE_TEXT,
   TIME_CONTROL_EDITOR_MODEL,
+  TIME_CONTROL_IMPLEMENTED_MODE,
+  TIME_CONTROL_MODE_SUMMARY_TEXT,
+  TIME_CONTROL_WRITE_DEBOUNCE_MS,
   applyEdgeModeToClassList,
   applySystemInsetsToStyle,
   createLiveStatusModel,
   createNearbyDeviceMetrics,
+  createTimeControlModeStripModel,
+  createTimeControlHalfHourLabel,
   filterSupportedDevices,
   formatBatteryPercent,
   formatBatteryVoltage,
@@ -36,6 +51,7 @@ import {
   formatWorkMinutes,
   isControlReady,
   mergeDiscoveryDevices,
+  requestInitialDeviceSync,
   resolveNativeBackAction,
   resolveBackNavigation,
   resolveBottomNavTab,
@@ -44,14 +60,20 @@ import {
   resolveSwipeDisconnectState,
   normalizeEdgeMode,
   resolveNativeCssPx,
+  shouldAcceptControlTap,
+  shouldAcceptRangeCommit,
   shouldAutoConnectSupportedDevice,
+  shouldRenderDeviceListForView,
   shouldScheduleInitialDiscovery,
   shouldStartBackgroundDiscovery,
   shouldOpenControlForConnectedDevice,
   shouldPollReadStatus,
-  shouldRefreshEnterControl
+  shouldRefreshEnterControl,
+  shouldRefreshTimeControlEditor,
+  createDeviceListRenderSignature
 } from "./app";
 import type { DeviceBrief, DeviceStatus } from "./types";
+import { DEFAULT_TIME_CONTROL_PARAMS } from "./protocol/timeControlParams";
 
 function status(connectionState: DeviceStatus["connectionState"]): DeviceStatus {
   return {
@@ -335,7 +357,24 @@ describe("App UI command model", () => {
     expect(TIME_CONTROL_EDITOR_MODEL.maxOutputModel).toBe("high-byte-percent-low-byte-00");
     expect(TIME_CONTROL_EDITOR_MODEL.segmentDurationModel).toBe("half-hour-units-1-to-15");
     expect(TIME_CONTROL_EDITOR_MODEL.modeStripPlacement).toBe("above-time-control-editor");
+    expect(TIME_CONTROL_EDITOR_MODEL.activeMode).toBe("time");
+    expect(TIME_CONTROL_EDITOR_MODEL.segmentEditorModel).toBe("linked-card");
+    expect(TIME_CONTROL_EDITOR_MODEL.writeDebounceMs).toBe(400);
+    expect(TIME_CONTROL_EDITOR_MODEL.writeScheduling).toBe("trailing-debounce");
     expect(TIME_CONTROL_EDITOR_MODEL.longFramePolicy).toBe("mode-02-future-split");
+  });
+
+  it("treats time-control as the only active control-panel mode until other mode editors exist", () => {
+    expect(TIME_CONTROL_IMPLEMENTED_MODE).toBe("time");
+    expect(TIME_CONTROL_CURRENT_MODE_TEXT).toBe("时控模式");
+    expect(TIME_CONTROL_MODE_SUMMARY_TEXT).toBe("时控");
+    expect(TIME_CONTROL_WRITE_DEBOUNCE_MS).toBe(400);
+
+    expect(createTimeControlModeStripModel("radar")).toEqual([
+      { mode: "radar", label: "雷达模式", active: false, disabled: true, stateLabel: "待接入" },
+      { mode: "time", label: "时控模式", active: true, disabled: false, stateLabel: "当前" },
+      { mode: "average", label: "平均模式", active: false, disabled: true, stateLabel: "待接入" }
+    ]);
   });
 
   it("enables business controls only after the controller reaches ready", () => {
@@ -343,6 +382,20 @@ describe("App UI command model", () => {
     expect(isControlReady(status("connecting"))).toBe(false);
     expect(isControlReady(status("subscribing"))).toBe(false);
     expect(isControlReady(status("error"))).toBe(false);
+  });
+
+  it("formats time segment duration labels as stacked parts without a slash", () => {
+    expect(createTimeControlHalfHourLabel(1)).toEqual({
+      unitLabel: "1档",
+      timeLabel: "0.5h",
+      inlineLabel: "1档 0.5h"
+    });
+    expect(createTimeControlHalfHourLabel(4)).toEqual({
+      unitLabel: "4档",
+      timeLabel: "2h",
+      inlineLabel: "4档 2h"
+    });
+    expect(createTimeControlHalfHourLabel(15).inlineLabel).not.toContain("/");
   });
 });
 
@@ -380,17 +433,25 @@ describe("App status formatting", () => {
 });
 
 describe("App discovery model", () => {
-  it("only allows the locked AC632N_1 device into the UI discovery list", () => {
+  it("allows the approved device names into the UI discovery list", () => {
     const devices = [
       device("D1", TARGET_DEVICE_NAME, -52),
       device("D2", "AC632N_2", -42),
       device("D3", "Other", -36),
-      device("D4", " AC632N_1 ", -58)
+      device("D4", " AC632N_1 ", -58),
+      device("D5", "AC632N-1", -57),
+      device("D6", "M3240-G", -55),
+      device("D7", "N3230-U", -54)
     ];
 
-    expect(filterSupportedDevices(devices)).toEqual([
-      device("D1", TARGET_DEVICE_NAME, -52),
-      device("D4", " AC632N_1 ", -58)
+    expect(SUPPORTED_DEVICE_NAMES).toEqual(["AC632N_1", "AC632N-1", "M3240-G", "N3230-U"]);
+    expect(SUPPORTED_DEVICE_LABEL).toBe("AC632N_1 / AC632N-1 / M3240-G / N3230-U");
+    expect(filterSupportedDevices(devices).map((item) => item.name.trim())).toEqual([
+      "AC632N_1",
+      "AC632N_1",
+      "AC632N-1",
+      "M3240-G",
+      "N3230-U"
     ]);
   });
 
@@ -411,11 +472,124 @@ describe("App discovery model", () => {
     expect(shouldScheduleInitialDiscovery(status("idle"), false, true)).toBe(false);
   });
 
-  it("auto-connects only when the locked target is present and no connection is active", () => {
+  it("auto-connects only when a supported target is present and no connection is active", () => {
     expect(shouldAutoConnectSupportedDevice([device("D1", TARGET_DEVICE_NAME, -52)], status("idle"), false)).toBe(true);
+    expect(shouldAutoConnectSupportedDevice([device("D3", "M3240-G", -52)], status("idle"), false)).toBe(true);
+    expect(shouldAutoConnectSupportedDevice([device("D4", "N3230-U", -52)], status("idle"), false)).toBe(true);
     expect(shouldAutoConnectSupportedDevice([device("D2", "AC632N_2", -42)], status("idle"), false)).toBe(false);
     expect(shouldAutoConnectSupportedDevice([device("D1", TARGET_DEVICE_NAME, -52)], status("ready"), false)).toBe(false);
     expect(shouldAutoConnectSupportedDevice([device("D1", TARGET_DEVICE_NAME, -52)], status("idle"), true)).toBe(false);
+  });
+
+  it("rejects scroll-like control gestures before commands are dispatched", () => {
+    expect(CONTROL_TOUCH_GUARD.scrollQuietMs).toBeGreaterThanOrEqual(200);
+    expect(
+      shouldAcceptControlTap({
+        startX: 80,
+        startY: 120,
+        endX: 83,
+        endY: 124,
+        now: 1000,
+        lastScrollAt: 0
+      })
+    ).toBe(true);
+    expect(
+      shouldAcceptControlTap({
+        startX: 80,
+        startY: 120,
+        endX: 84,
+        endY: 170,
+        now: 1000,
+        lastScrollAt: 0
+      })
+    ).toBe(false);
+    expect(
+      shouldAcceptControlTap({
+        startX: 80,
+        startY: 120,
+        endX: 80,
+        endY: 120,
+        now: 1100,
+        lastScrollAt: 1000
+      })
+    ).toBe(false);
+    expect(shouldAcceptControlTap({ canceled: true })).toBe(false);
+  });
+
+  it("accepts deliberate range commits but rejects vertical scroll commits", () => {
+    expect(
+      shouldAcceptRangeCommit({
+        startX: 40,
+        startY: 120,
+        endX: 40,
+        endY: 120,
+        now: 1000,
+        lastScrollAt: 0
+      })
+    ).toBe(true);
+    expect(
+      shouldAcceptRangeCommit({
+        startX: 40,
+        startY: 120,
+        endX: 105,
+        endY: 124,
+        now: 1000,
+        lastScrollAt: 0
+      })
+    ).toBe(true);
+    expect(
+      shouldAcceptRangeCommit({
+        startX: 40,
+        startY: 120,
+        endX: 48,
+        endY: 180,
+        now: 1000,
+        lastScrollAt: 0
+      })
+    ).toBe(false);
+  });
+
+  it("requests read-status then read-params once after a connection becomes ready", async () => {
+    const calls: string[] = [];
+    const result = await requestInitialDeviceSync(
+      {
+        readStatus: async () => {
+          calls.push("readStatus");
+          return "status-sent";
+        },
+        readParams: async () => {
+          calls.push("readParams");
+          return "params-sent";
+        }
+      },
+      () => true
+    );
+
+    expect(INITIAL_CONNECT_SYNC_COMMANDS).toEqual(["readStatus", "readParams"]);
+    expect(calls).toEqual(["readStatus", "readParams"]);
+    expect(result).toEqual({ readStatus: "status-sent", readParams: "params-sent", errors: [] });
+  });
+
+  it("does not continue initial sync when the connection operation is no longer active", async () => {
+    const calls: string[] = [];
+    let active = true;
+    const result = await requestInitialDeviceSync(
+      {
+        readStatus: async () => {
+          calls.push("readStatus");
+          active = false;
+          return "status-sent";
+        },
+        readParams: async () => {
+          calls.push("readParams");
+          return "params-sent";
+        }
+      },
+      () => active
+    );
+
+    expect(calls).toEqual(["readStatus"]);
+    expect(result).toEqual({ readStatus: "status-sent", errors: [] });
   });
 
   it("keeps refresh as a list refresh even when a target device is already connected", () => {
@@ -473,7 +647,9 @@ describe("App discovery model", () => {
     });
 
     expect(model.caption).toBe("LIVE STATUS");
-    expect(model.modeLabel).toBe("雷达模式");
+    expect(model.modeLabel).toBe("时控模式");
+    expect(model.modeSummaryLabel).toBe("时控");
+    expect(model.modeRaw).toBe("radar");
     expect(model.batteryType).toBe("磷酸铁锂");
     expect(model.workTime).toBe("27min");
     expect(model.brightness).toBe("85%");
@@ -573,8 +749,139 @@ describe("App discovery model", () => {
     expect(staleRound[0]?.isStale).toBe(true);
   });
 
+  it("retains missing devices for several scan rounds and keeps recent disconnects longer", () => {
+    const firstRound = mergeDiscoveryDevices([], [device("A1", TARGET_DEVICE_NAME, -60)], {
+      activeDeviceId: "",
+      now: 1000,
+      scanRound: 1,
+      usedFallback: false
+    });
+
+    const retainedByRound = mergeDiscoveryDevices(firstRound, [], {
+      activeDeviceId: "",
+      now: 1000 + DEVICE_FORGET_AFTER_MS + 1,
+      scanRound: 1 + DEVICE_RETAIN_SCAN_ROUNDS,
+      usedFallback: false
+    });
+    const expiredByRound = mergeDiscoveryDevices(firstRound, [], {
+      activeDeviceId: "",
+      now: 1000 + DEVICE_FORGET_AFTER_MS + 1,
+      scanRound: 2 + DEVICE_RETAIN_SCAN_ROUNDS,
+      usedFallback: false
+    });
+    const retainedDisconnect = mergeDiscoveryDevices(firstRound, [], {
+      activeDeviceId: "",
+      now: 1000 + DEVICE_FORGET_AFTER_MS + 1,
+      scanRound: 50,
+      usedFallback: false,
+      recentlyDisconnectedDeviceId: "A1"
+    });
+
+    expect(DEVICE_RETAIN_SCAN_ROUNDS).toBeGreaterThanOrEqual(3);
+    expect(DEVICE_RECENTLY_DISCONNECTED_KEEP_MS).toBeGreaterThan(DEVICE_FORGET_AFTER_MS);
+    expect(retainedByRound).toHaveLength(1);
+    expect(expiredByRound).toHaveLength(0);
+    expect(retainedDisconnect).toHaveLength(1);
+    expect(retainedDisconnect[0]?.isRecentlyDisconnected).toBe(true);
+  });
+
   it("uses a five second interval for continuous discovery rounds", () => {
     expect(DISCOVERY_INTERVAL_MS).toBe(5000);
+  });
+
+  it("uses a three second low-duty cadence for quiet background discovery", () => {
+    expect(BACKGROUND_DISCOVERY_INTERVAL_MS).toBe(3000);
+    expect(BACKGROUND_DISCOVERY_SCAN_WINDOWS).toEqual({
+      quickWindowMs: 800,
+      fullWindowMs: 1200
+    });
+  });
+
+  it("only renders the device list while the home list is visible", () => {
+    expect(shouldRenderDeviceListForView("home")).toBe(true);
+    expect(shouldRenderDeviceListForView("control")).toBe(false);
+    expect(shouldRenderDeviceListForView("scene")).toBe(false);
+    expect(shouldRenderDeviceListForView("profile")).toBe(false);
+  });
+
+  it("builds a stable device-list signature for skipping unchanged DOM rebuilds", () => {
+    const connectedStatus = {
+      ...status("ready"),
+      mode: "time",
+      power: 45,
+      batteryVoltage: 12.3,
+      solarVoltage: 18.2
+    };
+    const devices = mergeDiscoveryDevices([], [device("A1", TARGET_DEVICE_NAME, -55)], {
+      activeDeviceId: "A1",
+      now: 1000,
+      scanRound: 1,
+      usedFallback: false
+    });
+
+    const first = createDeviceListRenderSignature(devices, "A1", connectedStatus);
+    const same = createDeviceListRenderSignature([...devices], "A1", { ...connectedStatus });
+    const changedStatus = createDeviceListRenderSignature(devices, "A1", {
+      ...connectedStatus,
+      power: 46
+    });
+
+    expect(first).toBe(same);
+    expect(changedStatus).not.toBe(first);
+  });
+
+  it("refreshes the time-control editor only for parameter, draft, segment, or ready changes", () => {
+    const params = DEFAULT_TIME_CONTROL_PARAMS;
+    expect(
+      shouldRefreshTimeControlEditor({
+        previousTimeControlParams: params,
+        nextTimeControlParams: params,
+        previousReady: true,
+        nextReady: true,
+        draftChanged: false,
+        activeSegmentChanged: false
+      })
+    ).toBe(false);
+    expect(
+      shouldRefreshTimeControlEditor({
+        previousTimeControlParams: undefined,
+        nextTimeControlParams: params,
+        previousReady: true,
+        nextReady: true,
+        draftChanged: false,
+        activeSegmentChanged: false
+      })
+    ).toBe(true);
+    expect(
+      shouldRefreshTimeControlEditor({
+        previousTimeControlParams: params,
+        nextTimeControlParams: params,
+        previousReady: true,
+        nextReady: false,
+        draftChanged: false,
+        activeSegmentChanged: false
+      })
+    ).toBe(true);
+    expect(
+      shouldRefreshTimeControlEditor({
+        previousTimeControlParams: params,
+        nextTimeControlParams: params,
+        previousReady: true,
+        nextReady: true,
+        draftChanged: true,
+        activeSegmentChanged: false
+      })
+    ).toBe(true);
+    expect(
+      shouldRefreshTimeControlEditor({
+        previousTimeControlParams: params,
+        nextTimeControlParams: params,
+        previousReady: true,
+        nextReady: true,
+        draftChanged: false,
+        activeSegmentChanged: true
+      })
+    ).toBe(true);
   });
 
   it("polls read-status every five seconds only while the active device is ready", () => {

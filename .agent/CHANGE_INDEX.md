@@ -719,3 +719,110 @@ Key files:
 - `.agent/plans/2026-04-30-t036-time-control-ui-mode-output-duration-corrections.md`
 - `.agent/approvals/2026-04-30-t036-time-control-ui-mode-output-duration-corrections.md`
 - `.agent/reports/2026-04-30-t036-time-control-ui-mode-output-duration-corrections-report.md`
+
+## M30 - T-037 time-control interaction visual debounce
+
+Date: 2026-04-30
+
+Summary: Refined the time-control control panel after user review by making time-control the only active implemented mode, strengthening the active segment editor, and debouncing time-control full-frame writes.
+
+Key conclusions:
+- The control-panel mode strip now always highlights `时控模式` for the current implemented editor. `雷达模式` and `平均模式` remain visible but disabled until their editors/protocol flows are implemented.
+- Live Status and the control-panel context now show `当前是时控模式`, while the raw `status.mode` is retained for debug/data use.
+- Segment tabs, active segment duration, and active segment power are grouped in one linked card; switching segments updates the active title, selected tab, and both sliders/values together.
+- Time-control stepper buttons and slider release commits now use a 400ms trailing debounce. Consecutive changes collapse into one final full `B1 MODE=01` write.
+- Incoming `readParams` / `B1 MODE=01` sync cancels pending local writes before replacing the local draft.
+- Existing five MVP commands and ordinary-command no-wait behavior were preserved.
+- No T037 release APK was exported; latest delivery APK remains T033 unless requested.
+
+Related logs:
+- `.agent/logs/2026-04-30-session-05.md`
+
+Key files:
+- `项目文件/android-mvp-capacitor/src/app.ts`
+- `项目文件/android-mvp-capacitor/src/styles.css`
+- `项目文件/android-mvp-capacitor/src/app.test.ts`
+- `.agent/plans/2026-04-30-t037-time-control-interaction-visual-debounce.md`
+- `.agent/approvals/2026-04-30-t037-time-control-interaction-visual-debounce.md`
+- `.agent/reports/2026-04-30-t037-time-control-interaction-visual-debounce-report.md`
+
+## M31 - T-038 time-control label density polish
+
+Date: 2026-04-30
+
+Summary: Polished the T037 time-control UI labels by shortening Live Status mode text, removing a redundant current-mode card, and rendering time-segment duration labels as stacked unit/time values.
+
+Key conclusions:
+- Live Status main title now displays `时控模式`.
+- The Live Status mini `模式` card now displays `时控`.
+- The control-panel `当前模式` context card was removed.
+- Time-segment labels now render `?档` and `?h` as separate stacked lines with no `/` between them.
+- The time-control mode strip, 400ms trailing debounce, full `B1 MODE=01` write policy, protocol parsing, BLE native code, Android native code, and `deviceController.ts` were not changed.
+- No T038 release APK was exported; latest delivery APK remains T033 unless requested.
+
+Related logs:
+- `.agent/logs/2026-04-30-session-06.md`
+
+Key files:
+- `项目文件/android-mvp-capacitor/src/app.ts`
+- `项目文件/android-mvp-capacitor/src/styles.css`
+- `项目文件/android-mvp-capacitor/src/app.test.ts`
+- `.agent/plans/2026-04-30-t038-time-control-label-density-polish.md`
+- `.agent/approvals/2026-04-30-t038-time-control-label-density-polish.md`
+- `.agent/reports/2026-04-30-t038-time-control-label-density-polish-report.md`
+
+## M32 - T-039 touch guard, discovery stability, and initial sync
+
+Date: 2026-04-30
+
+Summary: Added App-layer touch intent guards, expanded the supported BLE device name list, kept low-frequency background discovery after connect/disconnect, and requested `readStatus` plus `readParams` once after connection ready.
+
+Key conclusions:
+- Supported target names are now `AC632N_1`, `AC632N-1`, `M3240-G`, and `N3230-U`; they currently share the same BLE profile and control UI.
+- App discovery requests no-prefix scans and filters by supported names in App code, making M/N names visible without Android native scanner changes.
+- Ordinary command buttons, time-control steppers, segment buttons, and sliders reject obvious vertical-scroll or recent-scroll interactions before sending.
+- Valid time-control changes still use the existing 400ms trailing debounce and full `B1 MODE=01` write.
+- Connection ready now triggers non-blocking `readStatus` then `readParams`; UI sync still comes from typed notify parsing, not raw HEX parsing in UI.
+- Background discovery is kept alive after connect/disconnect, with quiet result handling so the control page is not interrupted.
+- Missing devices are retained for several scan rounds; recently disconnected devices stay visible longer and are demoted below connectable devices.
+- Multi-device simultaneous BLE control and direct 2.4G replacement remain out of scope and are tracked as T040.
+- No T039 release APK was exported; latest delivery APK remains T033 unless requested.
+
+Related logs:
+- `.agent/logs/2026-04-30-session-07.md`
+
+Key files:
+- `项目文件/android-mvp-capacitor/src/app.ts`
+- `项目文件/android-mvp-capacitor/src/styles.css`
+- `项目文件/android-mvp-capacitor/src/app.test.ts`
+- `项目文件/android-mvp-capacitor/src/device/deviceController.ts`
+- `项目文件/android-mvp-capacitor/src/device/deviceController.test.ts`
+- `.agent/plans/2026-04-30-t039-touch-guard-discovery-sync.md`
+- `.agent/approvals/2026-04-30-t039-touch-guard-discovery-sync.md`
+- `.agent/reports/2026-04-30-t039-touch-guard-discovery-sync-report.md`
+
+## M33 - T-041 status-page scroll performance and background scan cadence
+
+Date: 2026-04-30
+
+Summary: Reduced status-page scroll jank risk by coalescing UI refreshes, avoiding hidden device-list rebuilds, narrowing time-control editor refreshes, and changing quiet background discovery to a shorter low-duty scan cadence.
+
+Key conclusions:
+- Status callbacks now queue UI refreshes through `requestAnimationFrame` instead of immediately chaining status/list/control refresh work.
+- The hidden home device list is not rebuilt while the user is on control/profile/scene views; returning home forces a render from latest in-memory discovery data.
+- Device-list rendering now uses a stable signature to skip unchanged `innerHTML` rebuild and event rebinding.
+- Time-control editor DOM writes are gated to parameter sync, draft change, active segment change, or ready-state change.
+- Quiet background discovery now waits 3000ms between rounds and uses quick 800ms / full 1200ms scan windows.
+- Read-status polling remains 5000ms; connection-ready `readStatus` + `readParams` initial sync remains non-blocking.
+- Protocol frames, Android native code, `deviceController.ts`, ordinary command no-wait behavior, and the protocol Excel were not changed.
+- No T041 release APK was exported; latest delivery APK remains T033 unless requested.
+
+Related logs:
+- `.agent/logs/2026-04-30-session-08.md`
+
+Key files:
+- `项目文件/android-mvp-capacitor/src/app.ts`
+- `项目文件/android-mvp-capacitor/src/app.test.ts`
+- `.agent/plans/2026-04-30-t041-status-page-scroll-performance-scan-cadence.md`
+- `.agent/approvals/2026-04-30-t041-status-page-scroll-performance-scan-cadence.md`
+- `.agent/reports/2026-04-30-t041-status-page-scroll-performance-scan-cadence-report.md`

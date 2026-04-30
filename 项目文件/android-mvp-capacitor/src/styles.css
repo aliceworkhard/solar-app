@@ -1264,13 +1264,29 @@ select:focus-visible {
 }
 
 .seg-btn {
+  display: grid;
+  place-items: center;
+  gap: 3px;
   min-height: 48px;
   border: 1px solid var(--line);
-  border-radius: 13px;
+  border-radius: 8px;
   background: #fff;
   color: var(--muted);
   font-size: 12px;
   font-weight: 900;
+}
+
+.seg-btn span,
+.seg-btn small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.seg-btn small {
+  color: #a6afbd;
+  font-size: 9px;
+  font-weight: 900;
+  line-height: 1;
 }
 
 .seg.readonly .seg-btn {
@@ -1282,6 +1298,16 @@ select:focus-visible {
   background: var(--orange-soft);
   color: var(--orange);
   box-shadow: inset 0 0 0 1px rgba(244, 154, 0, 0.16);
+}
+
+.seg-btn.active small {
+  color: var(--orange);
+}
+
+.seg-btn.disabled {
+  background: #f7f8fa;
+  color: #a3acba;
+  box-shadow: none;
 }
 
 .mvp-command-card .section-row {
@@ -1317,6 +1343,7 @@ select:focus-visible {
   text-align: left;
   background: #fff;
   overflow: hidden;
+  touch-action: pan-y;
 }
 
 .command-btn-primary {
@@ -1538,6 +1565,7 @@ select:focus-visible {
   font-size: 16px;
   font-weight: 900;
   line-height: 1;
+  touch-action: pan-y;
 }
 
 .time-stepper button:active {
@@ -1555,12 +1583,47 @@ select:focus-visible {
   width: 100%;
   min-width: 0;
   accent-color: var(--orange);
+  touch-action: pan-y;
 }
 
 .time-segment-tabs {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 5px;
+}
+
+.time-segment-editor-card {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 9px;
+  border: 1px solid rgba(244, 154, 0, 0.3);
+  border-radius: 8px;
+  background: linear-gradient(145deg, rgba(255, 250, 241, 0.96), rgba(255, 255, 255, 0.98));
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.55);
+}
+
+.time-segment-editor-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.time-segment-editor-head span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.time-segment-editor-head strong {
+  min-width: 0;
+  color: var(--orange);
+  font-size: 12px;
+  font-weight: 950;
+  overflow-wrap: anywhere;
+  text-align: right;
 }
 
 .time-segment-tab {
@@ -1571,12 +1634,13 @@ select:focus-visible {
   min-height: 42px;
   padding: 5px 3px;
   border: 1px solid var(--line);
-  border-radius: 11px;
+  border-radius: 8px;
   background: #fff;
   color: var(--muted);
+  touch-action: pan-y;
 }
 
-.time-segment-tab span {
+.time-segment-index {
   width: 18px;
   height: 18px;
   display: grid;
@@ -1591,7 +1655,6 @@ select:focus-visible {
   min-width: 0;
   font-size: 10px;
   font-weight: 900;
-  line-height: 1;
   overflow-wrap: anywhere;
 }
 
@@ -1599,16 +1662,55 @@ select:focus-visible {
   border-color: rgba(244, 154, 0, 0.48);
   background: var(--orange-soft);
   color: var(--orange);
+  box-shadow: 0 8px 18px rgba(244, 154, 0, 0.16), inset 0 0 0 1px rgba(244, 154, 0, 0.18);
 }
 
-.time-segment-tab.active span {
+.time-segment-tab.active .time-segment-index {
   background: rgba(244, 154, 0, 0.16);
+}
+
+.time-half-hour-label {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  line-height: 1;
+}
+
+.time-half-hour-label span,
+.time-half-hour-label small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.time-half-hour-label span {
+  font-size: 10px;
+  font-weight: 950;
+}
+
+.time-half-hour-label small {
+  color: #7e8997;
+  font-size: 9px;
+  font-weight: 900;
+}
+
+.time-slider-block .time-half-hour-label {
+  justify-items: end;
+  text-align: right;
 }
 
 .time-control-range-grid,
 .time-control-summary {
   display: grid;
   gap: 8px;
+}
+
+.linked-segment-controls {
+  gap: 7px;
+}
+
+.time-slider-block.linked {
+  border-color: rgba(244, 154, 0, 0.26);
+  background: rgba(255, 255, 255, 0.88);
 }
 
 .time-control-summary {

@@ -38,7 +38,7 @@
 
 ## Current Verification State
 
-- `npm.cmd test`：最近一次通过，6 个测试文件、72 个测试通过。
+- `npm.cmd test`：最近一次通过，6 个测试文件、80 个测试通过。
 - T-003 响应等待策略：5 条 MVP 命令默认不等待回包；显式 `waitForResponse=true` 路径已补单测，写入失败会清理 pending 后重试。
 - T-004 两页业务 UI：主页扫描/快连/连接反馈可见，控制页 5 个 RF 命令一一映射到 `DeviceController`，调试台隐藏保留。
 - T-002 前置接入：App 面向方法已锁定 5 条最小命令集 HEX，并有 `CommandBuilder` 与 `DeviceController` 写入链路测试覆盖。
@@ -62,6 +62,10 @@
 - T-034 Time Control Mode Write：已接入 `B1 MODE=01` 时控模式整包写入；新增 typed `TimeControlParams` 编码/解码，`LEN=1A`、29 字节总帧、5 个时段按累计半小时到达点编码；控制页新增时控编辑区，步进/滑块提交后发送整包，滑块拖动中不刷 BLE；`readParams` 仍不阻塞等待，但若 notify 返回 `B1 MODE=01` 会解析并同步到所有时控控件。现有 5 条 MVP 命令不变，普通命令和时控写入均不默认等待回包，UI 不直接解析 HEX。验证：TDD 红灯已观察，`npm.cmd test` 6 files / 67 tests、build、sync、Android Studio JBR `assembleDebug`、aapt 无 `testOnly`、apksigner、Chrome 320/360/390px layout smoke 均通过。未导出 T034 sideload APK，仍以 T033 APK 为最新交付包。
 - T-035 Time Control Real-Frame Corrections：基于用户真机帧和供应商三条 `B1` 样例修正 `MODE=01` 时控字段；时长改为 5 分钟累计点，功率改为 0-255 缩放百分比，最大输出改为 16-bit raw，电池类型标签改为 `1=磷酸铁锂/2=锂电池/3=铅酸`。`MODE=01` 仍为 29 字节整包一次发送，不做应用层分包；Android native 新增 best-effort `requestMtu(64)` 和 write byte-length 日志；`MODE=02` 37 字节长帧分包留给后续任务。验证：TDD 红灯已观察，`npm.cmd test` 6 files / 71 tests、build、sync、Android Studio JBR `assembleDebug`、aapt 无 `testOnly`、apksigner、Chrome 320/360/390px time-control layout smoke 均通过。未导出 T035 sideload APK，仍以 T033 APK 为最新交付包。
 - T-036 Time Control UI / Percent / Half-hour Corrections：按用户反馈修正 T035 UI 和模型；模式条移动到时控编辑器上方，删除 `参数整包写入` 文案；Live Status、附近设备卡片和模式条统一显示 `雷达模式/时控模式/平均模式`；最大输出改为高字节百分比显示，写入固定为 `[maxOutputByte, 00]`；时段 1~5 改为 1~15 档，每档 30 分钟，协议累计点按每档 6 写入。验证：TDD 红灯已观察，`npm.cmd test` 6 files / 72 tests、build、sync、Android Studio JBR `assembleDebug`、aapt 无 `testOnly`、apksigner、Chrome 320/360/390px T036 layout smoke 均通过。未导出 T036 sideload APK，仍以 T033 APK 为最新交付包。
+- T-037 Time Control Interaction Visual Debounce：按用户反馈进一步限定当前控制面板只突出 `时控模式`，`雷达模式/平均模式` 显示为未开放只读；Live Status 和控制面板模式上下文显示 `当前是时控模式`；时段 tabs、当前时段时长和当前时段功率已放入强化联动卡片；时控步进按键与滑杆提交改为 400ms trailing debounce，连续操作只发送最终一次完整 `B1 MODE=01`。普通业务命令不等待回包策略不变，UI 不直接解析 HEX，`deviceController.ts` 未改。验证：TDD 红灯已观察，`npm.cmd test` 6 files / 73 tests、build、sync、Android Studio JBR `assembleDebug`、aapt 无 `testOnly`、apksigner、Chrome 320/360/390px T037 layout/debounce smoke 均通过。未导出 T037 sideload APK，仍以 T033 APK 为最新交付包。
+- T-038 Time Control Label Density Polish：按用户反馈收短信控模式文案；Live Status 主标题改为 `时控模式`，Live Status 内“模式”小卡片改为 `时控`，控制面板内独立 `当前模式` 显示卡已移除；时段设置内档位/小时改为上下结构，例如 `1档` / `0.5h`，不再显示 `/`。协议、BLE、Android native、`deviceController.ts` 和普通命令不等待回包策略未改。验证：TDD 红灯已观察，`npm.cmd test` 6 files / 74 tests、build、sync、Android Studio JBR `assembleDebug`、aapt 无 `testOnly`、apksigner、Chrome 320/360/390px T038 layout smoke 均通过。未导出 T038 sideload APK，仍以 T033 APK 为最新交付包。
+- T-039 Touch Guard / Discovery Sync：按用户反馈增加误触防护和连接/扫描稳定性；普通命令按钮、时控步进按钮、时段按钮、时控滑杆均在提交前判断 pointer 轨迹和最近滚动，纵向滚屏误触不会发送；支持设备名扩展为 `AC632N_1`、`AC632N-1`、`M3240-G`、`N3230-U`，App 使用无前缀扫描后按支持名单过滤；连接 ready 后自动顺序发送 `读状态` 和 `读参数`，仍走非阻塞写入并通过 notify 被动同步 UI；连接/进入控制页后保持低频后台发现，断开设备更久保留并排到下方。`B1 MODE=01` 协议、普通命令不等待回包策略、Android native 和协议 Excel 未改。验证：TDD 红灯已观察，`npm.cmd test` 6 files / 80 tests、build、sync、Android Studio JBR `assembleDebug`、aapt 无 `testOnly`、apksigner、Chrome CDP 320/360/390px smoke 均通过。未导出 T039 sideload APK，仍以 T033 APK 为最新交付包。
+- T-041 Status Page Scroll Performance / Background Scan Cadence：按用户反馈优化设备状态页快速滑动卡顿风险和后台扫描节奏；状态回调改为 `requestAnimationFrame` 合并刷新，非 home 页不再重建隐藏设备列表，设备列表增加 render signature 去重，时控编辑器只在参数同步、draft、active segment 或 ready 状态变化时刷新，debug 日志隐藏时不刷 DOM；quiet background discovery 改为每轮完成后约 3000ms 调度，后台 scan window 缩短为 quick 800ms / full 1200ms。读状态 5 秒轮询、连接后 `读状态`/`读参数` 初始同步、普通命令不等待回包策略、协议帧、Android native、`deviceController.ts` 和协议 Excel 未改。验证：TDD 红灯已观察，`npm.cmd test` 6 files / 84 tests、build、sync、Android Studio JBR `assembleDebug`、aapt 无 `testOnly`、apksigner、Chrome CDP 320/360/390px control-page rapid-scroll smoke 均通过。未导出 T041 sideload APK，仍以 T033 APK 为最新交付包。
 
 ## Working Rules
 
@@ -145,12 +149,13 @@
 
 - T-001 20 次扫描/连接性能采样未补齐；当前只有可行性通过结论；用户已要求先不做、任务保留。
 - T-002 5 条 MVP 命令逐次复测数据未补齐；当前只有可行性通过结论；用户已要求先不做、任务保留。
-- T-009 持续发现仍需真机验证补扫间隔、过期时间和进入控制页后的低频保活策略。
+- T-009/T-039/T-041 持续发现仍需真机验证：连接后低频后台扫描、设备列表多轮保留、断开后保留排序，以及 T041 约 3 秒后台轻扫与状态页快速滑动观感在 vivo 真机上的表现仍需确认。
 - 协议回传口径已由用户确认：只有读状态和读参数需要关注回传，其他控制命令不用回传；程序默认不等待，仅允许显式标记命令等待。
 - 开/关命令按当前 `0x0A` 指令执行，是否能区分独立开机/关机仍待真机确认。
 - T-033 APK 已生成；仍需安装 `solar-remote-t033-sideload.apk` 真机确认顶部内容更靠上、底部 TabBar 更贴底、左右边距更合适、详情页默认点亮 `设备状态`。
-- T-036 需要真机确认修正后的时控参数写入和随后主动点击“读参数”后的 `B1 MODE=01` 回包是否按预期同步到全部控件；特别关注最大输出高字节百分比与低字节固定 `00` 是否符合真实设备语义、时段 1~15 档每档 30 分钟是否与设备显示一致，以及 29 字节整包写入在目标手机/设备上的稳定性。
-- T-028 已重设计控制面板按钮；仍需真机确认 enabled 状态下的视觉观感与误触风险。
+- T-038/T-039/T-041 需要真机确认短模式文案、时段上下结构、防误触阈值、连接后自动 `读状态`/`读参数` 同步，以及设备状态页快速滑动是否还卡顿；同时继续确认时控参数在 400ms 消抖后整包写入是否被设备稳定接受，并在主动点击“读参数”后确认 `B1 MODE=01` 回包仍按预期同步到全部按键和滑杆。
+- T-028/T-039 已重设计控制面板按钮并增加误触防护；仍需真机确认 enabled 状态下的视觉观感与滚动误触风险。
+- T-040 多设备并连与 2.4G 替代链路仅完成任务拆分，尚未评估/实施；当前 App 仍是单 active BLE 连接控制。
 - 详情页锚点已在 T-032 增加默认/切换选中态；真机仍需确认滚动落点和视觉位置是否符合预期。
 - Debug APK 可通过临时设置 Android Studio JBR `JAVA_HOME` 验证；如需全局常规命令仍可后续配置环境变量。
 - 多 agent 框架已建立，但还未经过一次真实多人协作演练。

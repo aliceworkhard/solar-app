@@ -13,6 +13,29 @@
 
 ## Now
 
+- [x] T-041 设备状态页滑动性能与后台扫描节奏优化
+  - 优先级：P0
+  - 状态：Done；已按批准方案完成 App 层刷新节流、隐藏列表跳过重建、后台扫描 3 秒低负担调度和时控编辑器刷新收窄
+  - 方案：`.agent/plans/2026-04-30-t041-status-page-scroll-performance-scan-cadence.md`
+  - 审批：`.agent/approvals/2026-04-30-t041-status-page-scroll-performance-scan-cadence.md`
+  - 报告：`.agent/reports/2026-04-30-t041-status-page-scroll-performance-scan-cadence-report.md`
+  - 涉及文件：`项目文件/android-mvp-capacitor/src/app.ts`、`项目文件/android-mvp-capacitor/src/app.test.ts`、`.agent/approvals/2026-04-30-t041-status-page-scroll-performance-scan-cadence.md`、`.agent/reports/2026-04-30-t041-status-page-scroll-performance-scan-cadence-report.md`、`.agent/logs/2026-04-30-session-08.md`；本次未改 `项目文件/android-mvp-capacitor/src/styles.css`
+  - 验收标准：快速滑动设备状态页时，后台扫描/状态同步不反复重建隐藏设备列表或无条件重写时控滑杆；后台发现约 3 秒调度一轮且使用更短扫描窗口；连接后 `读状态` / `读参数` 初始同步和 5 秒读状态轮询保留；普通业务命令不默认等待 BLE 回包；不改协议 Excel、AA55、Android `.idea`、多设备并连或 2.4G 链路；`npm test`、build、sync、Android debug build、APK 检查通过。
+  - 验证：TDD 红灯已观察；`npm.cmd test -- src/app.test.ts` 51 tests 通过；`npm.cmd test` 6 files / 84 tests 通过；`npm.cmd run build`、`npm.cmd run sync`、Android Studio JBR `gradlew.bat assembleDebug --project-prop android.injected.testOnly=false`、APK `aapt` 无 `testOnly`、`apksigner verify`、Chrome CDP 320/360/390px control-page rapid-scroll smoke 均通过。未导出 T041 sideload APK，仍以 T033 APK 为最新交付包。
+
+- [x] T-039 防误触、多目标设备发现、连接后同步与列表稳定
+  - 优先级：P0
+  - 状态：Done；已按批准方案实现防误触、多目标设备名、连接后初始同步、后台发现和列表保留稳定策略
+  - 方案：`.agent/plans/2026-04-30-t039-touch-guard-discovery-sync.md`
+  - 审批：`.agent/approvals/2026-04-30-t039-touch-guard-discovery-sync.md`
+  - 报告：`.agent/reports/2026-04-30-t039-touch-guard-discovery-sync-report.md`
+  - 涉及文件：`项目文件/android-mvp-capacitor/src/app.ts`、`项目文件/android-mvp-capacitor/src/styles.css`、`项目文件/android-mvp-capacitor/src/app.test.ts`、`项目文件/android-mvp-capacitor/src/device/deviceController.ts`、`项目文件/android-mvp-capacitor/src/device/deviceController.test.ts`
+  - 验收标准：纵向滚屏误触按钮/滑杆不发送；有效点击/拖动仍能发送；支持 `AC632N_1`、`AC632N-1`、`M3240-G`、`N3230-U`；连接后自动发 `读状态` 和 `读参数` 并通过 notify 同步 UI；连接 ready 后低频后台扫描不影响前台控制；断开设备保留并排到下方；设备列表保留几轮扫描；普通业务命令不改等待回包；不改协议 Excel、AA55、UI raw HEX、Android `.idea`；测试/build/sync/Android debug build/APK 检查通过。
+  - 验证：TDD 红灯已观察；`npm.cmd test -- src/app.test.ts` 47 tests 通过；`npm.cmd test -- src/device/deviceController.test.ts` 14 tests 通过；`npm.cmd test` 6 files / 80 tests 通过；`npm.cmd run build`、`npm.cmd run sync`、Android Studio JBR `gradlew.bat assembleDebug --project-prop android.injected.testOnly=false`、APK `aapt` 无 `testOnly`、`apksigner verify`、Chrome CDP 320/360/390px smoke 均通过。未导出 T039 sideload APK，仍以 T033 APK 为最新交付包。
+- [ ] T-040 多设备并连与 2.4G 替代链路可行性评估
+  - 优先级：P1
+  - 状态：Proposed；不纳入 T039 实施，需单独方案
+  - 验收标准：梳理当前单 active BLE 连接改成最多 5 个 BLE session 的架构改动、Android/native 插件能力、UI 设备选择和命令路由；说明直接 2.4G 替代 BLE 所需供应商硬件/API 前提；经用户确认后再决定是否开发。
 - [x] T-033 Edge Spacing Micro Adjust
   - 优先级：P0
   - 状态：Done；已在 T032 基础上把顶部标题/页面内容再上移一点点、底部 TabBar 内容再下移一点点，并将左右内容边距稍微放宽；已导出 `交付物/solar-remote-t033-sideload.apk` / `C:\solar-apk\solar-remote-t033-sideload.apk`，SHA256 `45AD1807CCD71BFFEFC964E7A77AF1E5FDA326AF439E1C17E51F303F6E621A4F`。
@@ -73,15 +96,29 @@
   - 验收标准：模式条位于时控参数区域上方；去掉 `参数整包写入` 文案；Live Status 和模式条统一显示 `雷达模式/时控模式/平均模式` 并由 `status.mode` 联动；最大输出 UI 显示百分比，写入字段为 `[00~FF, 00]`；时段 1~5 均为 1~15 档、每档 30 分钟、协议累计点按每档 6 写入；普通命令不等回包策略不变；测试、build、sync、Gradle、APK 检查通过。
   - 验证：TDD 红灯已观察；`npm.cmd test -- src/protocol/timeControlParams.test.ts src/protocol/commandBuilder.test.ts src/protocol/responseParser.test.ts src/app.test.ts` 4 files / 56 tests 通过；`npm.cmd test` 6 files / 72 tests 通过；`npm.cmd run build`、`npm.cmd run sync`、Android Studio JBR `gradlew.bat assembleDebug`、APK `aapt` 无 `testOnly`、`apksigner verify`、Chrome 320/360/390px T036 layout smoke 均通过。未导出 T036 sideload APK，仍以 T033 APK 为最新交付包。
 
-- [ ] T-037 时控交互可视化与消抖发送优化
+- [x] T-037 时控交互可视化与消抖发送优化
   - 优先级：P0
-  - 状态：Proposed；已写方案，等待用户确认后再实施。
+  - 状态：Done；已按方案固定控制面板当前实现模式为 `时控模式`，强化时段/时长/功率联动卡片，并把时控按键与滑杆提交改为 400ms trailing debounce 后整包发送。
   - 方案：`.agent/plans/2026-04-30-t037-time-control-interaction-visual-debounce.md`
+  - 审批：`.agent/approvals/2026-04-30-t037-time-control-interaction-visual-debounce.md`
+  - 报告：`.agent/reports/2026-04-30-t037-time-control-interaction-visual-debounce-report.md`
   - 输入依据：用户要求当前只实现时控时模式条应选中 `时控模式`；强化时段/时长/功率联动 UI；检验并增加按键/滑杆松手后的消抖延迟发送；优化 `当前是时控模式` 与下方 UI 的视觉关联。
   - 涉及文件：`项目文件/android-mvp-capacitor/src/app.ts`、`项目文件/android-mvp-capacitor/src/styles.css`、`项目文件/android-mvp-capacitor/src/app.test.ts`、`.agent/reports/`
   - 验收标准：控制面板模式条固定突出 `时控模式`，雷达/平均为未开放只读视觉；Live Status/控制面板出现 `当前是时控模式` 语义并与下方时控卡片关联；时段 tabs、当前时段时长、当前时段功率被一个强化卡片圈起，选中时段与两个滑杆/数值联动明显；时控步进按键和滑杆松手后约 400ms trailing debounce 才发送整包，连续操作只发送最终一次完整 `B1 MODE=01`；普通业务命令不等待回包策略不变；UI 不解析 HEX；测试、build、sync、Gradle、APK 检查和 320/360/390px layout/debounce smoke 通过。
+  - 验证：TDD 红灯已观察；`npm.cmd test -- src/app.test.ts` 1 file / 41 tests 通过；`npm.cmd test -- src/protocol/timeControlParams.test.ts src/protocol/commandBuilder.test.ts src/protocol/responseParser.test.ts src/app.test.ts` 4 files / 57 tests 通过；`npm.cmd test` 6 files / 73 tests 通过；`npm.cmd run build`、`npm.cmd run sync`、Android Studio JBR `gradlew.bat assembleDebug`、APK `aapt` 无 `testOnly`、`apksigner verify`、Chrome 320/360/390px T037 layout/debounce smoke 均通过。未导出 T037 sideload APK，仍以 T033 APK 为最新交付包。
 
-- 当前没有正在实施的已批准任务；T-037 等待确认；T-001/T-002/T-010 保持不动。
+- [x] T-038 时控模式文案与时段档位排版微调
+  - 优先级：P0
+  - 状态：Done；已按用户要求收短 Live Status 模式文案、移除控制面板 `当前模式` 显示卡，并把时段档位/小时改为上下结构。
+  - 方案：`.agent/plans/2026-04-30-t038-time-control-label-density-polish.md`
+  - 审批：`.agent/approvals/2026-04-30-t038-time-control-label-density-polish.md`
+  - 报告：`.agent/reports/2026-04-30-t038-time-control-label-density-polish-report.md`
+  - 输入依据：用户要求 Live Status 大标题从 `当前是时控模式` 改为 `时控模式`，“模式”小卡片改为 `时控`，去掉控制面板里的 `当前模式` 显示卡，并把时段设置中的 `?档 / ?h` 改为无 `/` 的上下结构。
+  - 涉及文件：`项目文件/android-mvp-capacitor/src/app.ts`、`项目文件/android-mvp-capacitor/src/styles.css`、`项目文件/android-mvp-capacitor/src/app.test.ts`、`.agent/reports/`
+  - 验收标准：Live Status 主标题显示 `时控模式`；Live Status 内“模式”小卡片显示 `时控`；控制面板不再显示 `当前模式` 显示卡；时段设置内 `?档` 与 `?h` 上下排列且没有 `/`；不改协议/BLE/Android native/`deviceController.ts`；普通业务命令不等待回包策略不变；单测、build、sync、Gradle、APK 检查和 320/360/390px layout smoke 通过。
+  - 验证：TDD 红灯已观察；`npm.cmd test -- src/app.test.ts` 1 file / 42 tests 通过；`npm.cmd test` 6 files / 74 tests 通过；`npm.cmd run build`、`npm.cmd run sync`、Android Studio JBR `gradlew.bat assembleDebug`、APK `aapt` 无 `testOnly`、`apksigner verify`、Chrome 320/360/390px T038 layout smoke 均通过。未导出 T038 sideload APK，仍以 T033 APK 为最新交付包。
+
+- 当前 T-039 已完成；T-001/T-002/T-010 保持不动；T-040 多设备/2.4G 需单独评估后再实施。
 
 - [ ] T-001 补齐 20 次真机性能采样
   - 优先级：P0

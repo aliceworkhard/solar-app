@@ -252,6 +252,7 @@ describe("DeviceController BLE flow", () => {
     const controller = new DeviceController() as unknown as {
       ble: MockBleBridge;
       scan: (options?: {
+        namePrefix?: string;
         quickWindowMs?: number;
         fullWindowMs?: number;
         onProgress?: (devices: DeviceBrief[]) => void;
@@ -284,6 +285,20 @@ describe("DeviceController BLE flow", () => {
     expect(progress.length).toBeGreaterThan(0);
     const lastProgressBatch = progress[progress.length - 1];
     expect(lastProgressBatch?.[0]?.deviceId).toBe("D1");
+  });
+
+  it("allows callers to request a no-prefix scan for the expanded supported-name list", async () => {
+    const bridge = new MockBleBridge({ services: [] });
+    bridge.quickScanDevices = [{ deviceId: "M1", name: "M3240-G", rssi: -61 }];
+    const controller = new DeviceController() as unknown as {
+      ble: MockBleBridge;
+      scan: (options?: { namePrefix?: string; quickWindowMs?: number; fullWindowMs?: number }) => Promise<DeviceBrief[]>;
+    };
+    controller.ble = bridge;
+
+    await controller.scan({ namePrefix: "", quickWindowMs: 600, fullWindowMs: 600 });
+
+    expect(bridge.lastScanOptions?.namePrefix).toBe("");
   });
 
   it("tracks ready state and can quick-connect to the last successful device", async () => {
